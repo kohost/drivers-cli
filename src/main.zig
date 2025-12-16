@@ -1,6 +1,7 @@
 const std = @import("std");
 const parse = @import("./parse.zig");
 const term = @import("./terminal.zig");
+const commands = @import("./commands.zig");
 
 fn connect(host: []const u8, port: u16) !std.net.Stream {
     const address = try std.net.Address.parseIp(host, port);
@@ -75,6 +76,7 @@ pub fn main() !void {
 
     // Prompt
     const prompt = try std.fmt.allocPrint(alloc, "{s}:{d}> ", .{ host, port });
+    defer alloc.free(prompt);
 
     while (true) {
         std.debug.print("{s}:{d}> ", .{ host, port });
@@ -90,6 +92,22 @@ pub fn main() !void {
 
         if (cmd.len == 0) continue;
         if (std.mem.eql(u8, cmd, "exit")) break;
+        if (std.mem.eql(u8, cmd, "help")) {
+            // Copies the array into new mutable var on stack
+            var sorted = commands.list;
+            std.mem.sort(commands.CommandInfo, &sorted, {}, struct {
+                fn cmp(_: void, a: commands.CommandInfo, b: commands.CommandInfo) bool {
+                    return std.mem.lessThan(u8, a.name, b.name);
+                }
+            }.cmp);
+            std.debug.print("\n{s:<20} {s:<8} {s}\n", .{ "Command", "Alias", "Description" });
+            std.debug.print("{s}\n", .{"-" ** 50});
+            for (sorted) |c| {
+                std.debug.print("{s:<20} {s:<8} {s}\n", .{ c.name, c.alias orelse "", c.description });
+            }
+            std.debug.print("\n", .{});
+            continue;
+        }
 
         // Save to history (duplicate the string for persistance)
         if (history.items.len == 0 or !std.mem.eql(u8, history.items[history.items.len - 1], input)) {

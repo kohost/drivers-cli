@@ -10,12 +10,12 @@ pub const list = [_]CommandInfo{
     .{ .name = "GetDevices", .alias = "gd", .description = "Get all devices", .args = null },
     .{ .name = "UpdateDevices", .alias = "ud", .description = "Updates devices", .args = "devices=[{}]" },
     .{ .name = "AddDevices", .alias = "ad", .description = "Add devices", .args = "devices=[{}]" },
-    .{ .name = "DeleteDevices", .alias = "ad", .description = "Delete devices", .args = "devices=[{}]" },
+    .{ .name = "DeleteDevices", .alias = "dd", .description = "Delete devices", .args = "devices=[{}]" },
 
     .{ .name = "GetCredentials", .alias = "gc", .description = "Get all credentials", .args = null },
     .{ .name = "UpdateCredentials", .alias = "uc", .description = "Updates credentials", .args = "credentials=[{}] auth=\"\"" },
     .{ .name = "AddCredentials", .alias = "ac", .description = "Add credentials", .args = "credentials=[{}] auth=\"\"" },
-    .{ .name = "DeleteCredentials", .alias = "ac", .description = "Delete credentials", .args = "credentials=[{}] auth=\"\"" },
+    .{ .name = "DeleteCredentials", .alias = "dc", .description = "Delete credentials", .args = "credentials=[{}] auth=\"\"" },
 };
 
 pub fn findMatch(str: []const u8) ?[]const u8 {
