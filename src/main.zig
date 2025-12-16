@@ -1,4 +1,5 @@
 const std = @import("std");
+const config = @import("config");
 const parse = @import("./parse.zig");
 const term = @import("./terminal.zig");
 const commands = @import("./commands.zig");
@@ -92,6 +93,10 @@ pub fn main() !void {
 
         if (cmd.len == 0) continue;
         if (std.mem.eql(u8, cmd, "exit")) break;
+        if (std.mem.eql(u8, cmd, "version")) {
+            std.debug.print("{s}\n", .{config.version});
+            continue;
+        }
         if (std.mem.eql(u8, cmd, "help")) {
             // Copies the array into new mutable var on stack
             var sorted = commands.list;

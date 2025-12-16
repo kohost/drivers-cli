@@ -13,6 +13,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     };
     const module = b.createModule(moduleCfg);
+
+    // Add version from build options
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", "1.0.0");
+    module.addOptions("config", options);
+
     const exe = b.addExecutable(.{ .name = "kohost", .root_module = module });
 
     // Tells 'zig build' to copy compiled exe to zig-out/bin/kohost
