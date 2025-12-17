@@ -5,3 +5,6 @@ zig-cache/
 
 #OS files
 .DS_Store
+
+#Releases
+drivers-cli-*

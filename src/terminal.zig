@@ -79,7 +79,6 @@ fn showSuggestion(stdout: std.fs.File, buf: []const u8, pos: usize, cursor: usiz
     try stdout.writeAll("\x1b[K");
 
     if (commands.findMatch(buf[0..pos])) |match| {
-        // Check if we have an exact match (command fully typed)
         const is_exact = std.mem.eql(u8, buf[0..pos], match) or
             (pos > match.len and buf[match.len] == ' ');
 
@@ -88,7 +87,6 @@ fn showSuggestion(stdout: std.fs.File, buf: []const u8, pos: usize, cursor: usiz
             for (commands.list) |cmd| {
                 if (std.mem.eql(u8, cmd.name, match)) {
                     if (cmd.args) |args| {
-                        // Check if args not already typed
                         if (pos == match.len) {
                             try stdout.writeAll("\x1b[90m");
                             try stdout.writeAll(" ");
@@ -104,7 +102,7 @@ fn showSuggestion(stdout: std.fs.File, buf: []const u8, pos: usize, cursor: usiz
                 }
             }
         } else if (match.len > pos) {
-            // Show command completion
+            // Normal prefix match - show remaining chars
             try stdout.writeAll("\x1b[90m");
             try stdout.writeAll(match[pos..]);
             try stdout.writeAll("\x1b[0m");
@@ -420,6 +418,46 @@ pub fn readUserInput(buf: *[1024]u8, history: *std.ArrayList([]const u8), prompt
                 const move_cmd = std.fmt.bufPrint(&move_buf, "\x1b[{d}D", .{pos - cursor}) catch
                     unreachable;
                 try stdout.writeAll(move_cmd);
+            }
+
+            // Auto-complete alias: check to see if we have an exact alias match
+            for (commands.list) |cmd| {
+                if (cmd.alias) |alias| {
+                    if (std.mem.eql(u8, buf[0..pos], alias)) {
+                        // Replace with full command name
+                        @memcpy(buf[0..cmd.name.len], cmd.name);
+                        pos = cmd.name.len;
+                        cursor = cmd.name.len;
+
+                        // Add arg if available
+                        if (cmd.args) |args| {
+                            buf[pos] = ' ';
+                            @memcpy(buf[pos + 1 .. pos + 1 + args.len], args);
+                            pos += 1 + args.len;
+
+                            // Find first arg slot
+                            const slots = findArgSlots(buf[cmd.name.len + 1 .. pos]);
+                            if (slots[0]) |slot_offset| {
+                                cursor = cmd.name.len + 1 + slot_offset;
+                            }
+                            arg_slot = 1;
+                        }
+
+                        // Redraw
+                        try stdout.writeAll("\r");
+                        try stdout.writeAll(prompt);
+                        try stdout.writeAll(buf[0..pos]);
+
+                        // Move cursor to arg position
+                        if (pos > cursor) {
+                            var move_buf: [16]u8 = undefined;
+                            const move_cmd = std.fmt.bufPrint(&move_buf, "\x1b[{d}D", .{pos - cursor}) catch
+                                unreachable;
+                            try stdout.writeAll(move_cmd);
+                        }
+                        break;
+                    }
+                }
             }
 
             try showSuggestion(stdout, buf, pos, cursor);

@@ -16,18 +16,19 @@ pub fn build(b: *std.Build) void {
 
     // Add version from build options
     const options = b.addOptions();
-    options.addOption([]const u8, "version", "1.0.0");
+    const git_describe = b.run(&.{ "git", "describe", "--tags", "--abbrev=0" });
+    options.addOption([]const u8, "version", git_describe);
     module.addOptions("config", options);
 
-    const exe = b.addExecutable(.{ .name = "kohost", .root_module = module });
+    const exe = b.addExecutable(.{ .name = "drivers-cli", .root_module = module });
 
-    // Tells 'zig build' to copy compiled exe to zig-out/bin/kohost
+    // Tells 'zig build' to copy compiled exe to zig-out/bin/drivers-cli
     b.installArtifact(exe);
 
     // Command to execute compiled program
     const run_cmd = b.addRunArtifact(exe);
 
-    // Before running exe make sure it's copied to zig-out/bin/kohost
+    // Before running exe make sure it's copied to zig-out/bin/drivers-cli
     run_cmd.step.dependOn(b.getInstallStep());
 
     // Forward command line args
