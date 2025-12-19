@@ -171,10 +171,8 @@ pub fn formatJSON(alloc: std.mem.Allocator, str: []const u8) ![]const u8 {
 // {command: string, data: Object}
 // ex. {command: UpdateDevices, data: {devices: [{id:1234, level: 50}]} }
 pub fn buildRequest(alloc: std.mem.Allocator, input: []const u8) ![]const u8 {
-    var parts = std.mem.splitScalar(u8, input, ' ');
-
-    // First part is the command
-    const cmd = parts.first();
+    const cmd_end = std.mem.indexOf(u8, input, " ") orelse input.len;
+    const cmd = input[0..cmd_end];
 
     // Build data obj
     var data_map = std.json.ObjectMap.init(alloc);
@@ -188,27 +186,45 @@ pub fn buildRequest(alloc: std.mem.Allocator, input: []const u8) ![]const u8 {
     var parsed: ?std.json.Parsed(std.json.Value) = null;
     defer if (parsed) |*p| p.deinit();
 
-    while (parts.next()) |arg| {
-        if (std.mem.indexOf(u8, arg, "=")) |idx| {
-            const key = arg[0..idx];
-            const val_str = arg[idx + 1 ..];
+    // Parse args with quote awareness
+    var i = cmd_end + 1;
+    while (i < input.len) {
+        // Skip spaces
+        while (i < input.len and input[i] == ' ') i += 1;
+        if (i >= input.len) break;
 
-            if (val_str[0] == '[' or val_str[0] == '{') {
-                // Parse as JSON (array or object)
-                parsed = try std.json.parseFromSlice(std.json.Value, alloc, val_str, .{});
-                try data_map.put(key, parsed.?.value);
-            } else if (std.mem.eql(u8, val_str, "true")) {
-                try data_map.put(key, .{ .bool = true });
-            } else if (std.mem.eql(u8, val_str, "false")) {
-                try data_map.put(key, .{ .bool = false });
-            } else if (std.fmt.parseInt(i64, val_str, 10)) |num| {
-                try data_map.put(key, .{ .integer = num });
+        // Find key until '='
+        const key_start = i;
+        while (i < input.len and input[i] != '=') i += 1;
+        if (i >= input.len) break;
+        const key = input[key_start..i];
+        i += 1; // Skip '='
+
+        // Find value end ' ' outside quotes
+        const val_start = i;
+        var in_quotes = false;
+        while (i < input.len) {
+            if (input[i] == '"') in_quotes = !in_quotes;
+            if (input[i] == ' ' and !in_quotes) break;
+            i += 1;
+        }
+        const val_str = input[val_start..i];
+
+        if (val_str[0] == '[' or val_str[0] == '{') {
+            // Parse as JSON (array or object)
+            parsed = try std.json.parseFromSlice(std.json.Value, alloc, val_str, .{});
+            try data_map.put(key, parsed.?.value);
+        } else if (std.mem.eql(u8, val_str, "true")) {
+            try data_map.put(key, .{ .bool = true });
+        } else if (std.mem.eql(u8, val_str, "false")) {
+            try data_map.put(key, .{ .bool = false });
+        } else if (std.fmt.parseInt(i64, val_str, 10)) |num| {
+            try data_map.put(key, .{ .integer = num });
+        } else |_| {
+            if (std.fmt.parseFloat(f64, val_str)) |num| {
+                try data_map.put(key, .{ .float = num });
             } else |_| {
-                if (std.fmt.parseFloat(f64, val_str)) |num| {
-                    try data_map.put(key, .{ .float = num });
-                } else |_| {
-                    try data_map.put(key, .{ .string = val_str });
-                }
+                try data_map.put(key, .{ .string = val_str });
             }
         }
     }
