@@ -178,11 +178,6 @@ pub fn buildRequest(alloc: std.mem.Allocator, input: []const u8) ![]const u8 {
     var data_map = std.json.ObjectMap.init(alloc);
     defer data_map.deinit();
 
-    // Optionally holds a single parsed JSON value
-
-    // TODO: If we need to pass more than a single key that contains JSON
-    // then we can add an array here and push the paresd values, then this
-    // defer can loop through them and deinit.
     var parsed: ?std.json.Parsed(std.json.Value) = null;
     defer if (parsed) |*p| p.deinit();
 
@@ -208,12 +203,21 @@ pub fn buildRequest(alloc: std.mem.Allocator, input: []const u8) ![]const u8 {
             if (input[i] == ' ' and !in_quotes) break;
             i += 1;
         }
-        const val_str = input[val_start..i];
+        var val_str = input[val_start..i];
+        const is_string = (val_str.len >= 2 and val_str[0] == '"' and val_str[val_str.len - 1] == '"');
+
+        // Strip non-JSON '"'
+        if (is_string) {
+            val_str = val_str[1 .. val_str.len - 1];
+        }
 
         if (val_str[0] == '[' or val_str[0] == '{') {
             // Parse as JSON (array or object)
             parsed = try std.json.parseFromSlice(std.json.Value, alloc, val_str, .{});
             try data_map.put(key, parsed.?.value);
+        } else if (is_string) {
+            // Quoted means always a string, so no type detection
+            try data_map.put(key, .{ .string = val_str });
         } else if (std.mem.eql(u8, val_str, "true")) {
             try data_map.put(key, .{ .bool = true });
         } else if (std.mem.eql(u8, val_str, "false")) {

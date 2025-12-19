@@ -5,7 +5,7 @@ pub const CommandInfo = struct { name: []const u8, alias: ?[]const u8, descripti
 pub const list = [_]CommandInfo{
     .{ .name = "GetHealth", .alias = "gh", .description = "Gets system health", .args = null },
     .{ .name = "GetLogs", .alias = "gl", .description = "Gets system logs", .args = "beginDateTime=\"\" endDateTime=\"\"" },
-    .{ .name = "GetMobileKey", .alias = "gm", .description = "Gets mobile key", .args = "lockIds=[\"\"] phone=\"\" beginDateTime=\"\" endDateTime=\"\"" },
+    .{ .name = "GetMobileKey", .alias = "gm", .description = "Gets mobile key", .args = "lockIds=[\"\"] phone=\"+\" beginDateTime=\"\" endDateTime=\"\"" },
 
     .{ .name = "GetDevices", .alias = "gd", .description = "Get all devices", .args = null },
     .{ .name = "UpdateDevices", .alias = "ud", .description = "Updates devices", .args = "devices=[{}]" },
