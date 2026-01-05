@@ -1,50 +1,12 @@
 const std = @import("std");
 const config = @import("config");
+const connection = @import("./connection.zig");
 const parse = @import("./parse.zig");
 const term = @import("./terminal.zig");
 const commands = @import("./commands.zig");
+const tui = @import("./tui/tui.zig");
 
-fn connect(host: []const u8, port: u16) !std.net.Stream {
-    const address = try std.net.Address.parseIp(host, port);
-    const stream = try std.net.tcpConnectToAddress(address);
-
-    return stream;
-}
-
-fn sendCmd(stream: std.net.Stream, alloc: std.mem.Allocator, cmd: []const u8, filter: ?[]const u8) !void {
-    // Build JSON request
-    const req = try parse.buildRequest(alloc, cmd);
-    defer alloc.free(req);
-
-    _ = try stream.write(req);
-
-    // Read response
-    var buffer: [8192]u8 = undefined;
-    const bytes_read = try stream.read(&buffer);
-    const res = buffer[0..bytes_read];
-
-    const data = try parse.getData(alloc, res);
-    defer alloc.free(data);
-
-    // Apply filter if present
-    if (filter) |f| {
-        const filtered = try parse.applyFilter(alloc, data, f);
-        defer alloc.free(filtered);
-
-        // Format each line separately (filter may return multiple values)
-        var lines = std.mem.splitScalar(u8, filtered, '\n');
-        while (lines.next()) |line| {
-            if (line.len == 0) continue;
-            const formatted = try parse.formatJSON(alloc, line);
-            defer alloc.free(formatted);
-            std.debug.print("{s}\n", .{formatted});
-        }
-    } else {
-        const parsed = try parse.formatJSON(alloc, data);
-        defer alloc.free(parsed);
-        std.debug.print("{s}\n", .{parsed});
-    }
-}
+pub const Config = struct { host: []const u8, port: u16, use_tui: bool };
 
 pub fn main() !void {
     // Get allocator
@@ -56,9 +18,15 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    // Default to localhost:16483
-    const host = if (args.len > 1) args[1] else "127.0.0.1";
-    const port = if (args.len > 2) try std.fmt.parseInt(u16, args[2], 10) else 16483;
+    // Parse args - Exit on null return
+    const cfg = parseArgs(args) catch |err| {
+        std.debug.print("{s}\n", .{@errorName(err)});
+        return;
+    };
+    if (cfg.use_tui) {
+        try tui.run(cfg, alloc);
+        return;
+    }
 
     // Enable raw mode to capture up and down arrows
     const original_termios = try term.enableRawMode();
@@ -76,11 +44,11 @@ pub fn main() !void {
     }
 
     // Prompt
-    const prompt = try std.fmt.allocPrint(alloc, "{s}:{d}> ", .{ host, port });
+    const prompt = try std.fmt.allocPrint(alloc, "{s}:{d}> ", .{ cfg.host, cfg.port });
     defer alloc.free(prompt);
 
     while (true) {
-        std.debug.print("{s}:{d}> ", .{ host, port });
+        std.debug.print("{s}:{d}> ", .{ cfg.host, cfg.port });
         const input = term.readUserInput(&buffer, &history, prompt) catch |err| {
             std.debug.print("Error: {s}\n", .{@errorName(err)});
             continue;
@@ -120,14 +88,60 @@ pub fn main() !void {
             try history.append(alloc, input_copy);
         }
 
-        const stream = connect(host, port) catch |err| {
-            std.debug.print("{s} at {s}:{d}\n", .{ @errorName(err), host, port });
+        const stream = connection.connect(cfg.host, cfg.port) catch |err| {
+            std.debug.print("{s} at {s}:{d}\n", .{ @errorName(err), cfg.host, cfg.port });
             continue;
         };
         defer stream.close();
 
-        _ = sendCmd(stream, alloc, cmd, filter) catch |err| {
+        const data = connection.sendCmd(stream, alloc, cmd) catch |err| {
             std.debug.print("SendCmd Error: {s}\n", .{@errorName(err)});
+            continue;
         };
+        defer alloc.free(data);
+
+        if (filter) |f| {
+            const filtered = try parse.applyFilter(alloc, data, f);
+            defer alloc.free(filtered);
+
+            // Format each line separately (filter may return multiple values)
+            var lines = std.mem.splitScalar(u8, filtered, '\n');
+            while (lines.next()) |line| {
+                if (line.len == 0) continue;
+                const formatted = try parse.formatJSON(alloc, line);
+                defer alloc.free(formatted);
+                std.debug.print("{s}\n", .{formatted});
+            }
+        } else {
+            const parsed = try parse.formatJSON(alloc, data);
+            defer alloc.free(parsed);
+            std.debug.print("{s}\n", .{parsed});
+        }
     }
+}
+
+fn parseArgs(args: [][:0]u8) !Config {
+    var use_tui = false;
+    var host: []const u8 = "127.0.0.1";
+    var port: u16 = 16483;
+
+    for (args[1..], 0..) |arg, idx| {
+        if (std.mem.eql(u8, arg, "--tui")) {
+            use_tui = true;
+            break;
+        } else {
+            switch (idx) {
+                0 => host = arg,
+                1 => port = std.fmt.parseInt(u16, arg, 10) catch {
+                    return error.InvalidPort;
+                },
+                else => return error.InvalidArg,
+            }
+        }
+    }
+    return .{
+        .host = host,
+        .port = port,
+        .use_tui = use_tui,
+    };
 }
