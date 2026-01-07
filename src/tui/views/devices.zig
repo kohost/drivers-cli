@@ -74,19 +74,23 @@ pub const DevicesView = struct {
     }
 
     fn writeRows(self: *Self, stdout: std.fs.File) !void {
-        const Y_PAD: u8 = 2;
-        const X_PAD: u8 = 1;
         var pos_buf: [16]u8 = undefined;
 
         switch (self.data.*) {
             .err => |msg| {
-                const yPos = self.area.y + Y_PAD;
-                const xPos = self.area.x + X_PAD;
+                const yPos = self.area.y + self.area.height - 1;
+                const xPos = self.area.x + 1;
                 const row_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, xPos });
                 try stdout.writeAll(row_pos);
+                try stdout.writeAll(Color.teal);
+                try stdout.writeAll(Color.dim);
+                try stdout.writeAll("┘");
+                try stdout.writeAll(Color.reset);
                 try stdout.writeAll(Color.pink);
-                try stdout.writeAll("Error: ");
                 try stdout.writeAll(msg);
+                try stdout.writeAll(Color.teal);
+                try stdout.writeAll(Color.dim);
+                try stdout.writeAll("└");
                 try stdout.writeAll(Color.reset);
             },
             .json => |json| {
