@@ -10,6 +10,7 @@ const Config = @import("../main.zig").Config;
 const Mode = @import("./types.zig").Mode;
 const Rect = @import("./types.zig").Rect;
 const KeyResult = @import("./types.zig").KeyResult;
+const Data = @import("./types.zig").Data;
 const Cursor = struct {
     pub const save = "\x1b[s";
     pub const restore = "\x1b[u";
@@ -54,30 +55,6 @@ fn clearCmdLine(stdout: std.fs.File, content: Rect) !void {
     try moveTo(stdout, content, 0, content.height);
     try stdout.writeAll("\x1b[K"); // clear line
 }
-
-// fn getView(stdout: std.fs.File, alloc: std.mem.Allocator, panel: panels.Panel, tab: usize, cfg: Config) !void {
-//     switch (tab) {
-//         0 => {
-//             if (connection.connect(cfg.host, cfg.port)) |stream| {
-//                 defer stream.close();
-//                 const data = try connection.sendCmd(stream, alloc, "GetDevices");
-//                 defer alloc.free(data);
-//
-//                 var view = try DeviceView.init(alloc, panel.rect, data);
-//                 defer view.deinit();
-//                 try view.render(stdout);
-//                 //                 return view.row_count;
-//             } else |err| {
-//                 //                  try view.render(err);
-//                 std.debug.print("{s}", .{@errorName(err)});
-//             }
-//         },
-//         1 => {
-//             return try api_view.draw(stdout, panel.rect);
-//         },
-//         else => {},
-//     }
-// }
 
 pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     const stdout = std.fs.File.stdout();
@@ -141,14 +118,24 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
 
     // Draw initial panel content
     // Get data
-    const stream = try connection.connect(cfg.host, cfg.port);
-    defer stream.close();
-    const data = try connection.sendCmd(stream, alloc, "GetDevices");
-    defer alloc.free(data);
-    const json = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
-    defer json.deinit();
-    // Draw
-    var view = View.init(tab_bar.selected, panel.rect, &json);
+    const data: Data = blk: {
+        const stream = connection.connect(cfg.host, cfg.port) catch |e| break :blk .{ .err = @errorName(e) };
+        defer stream.close();
+        const raw = connection.sendCmd(stream, alloc, "GetDevices") catch |e| break :blk .{ .err = @errorName(e) };
+        defer alloc.free(raw);
+        const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch |e| break :blk .{ .err = @errorName(e) };
+        break :blk .{ .json = parsed };
+    };
+    defer if (data == .json) data.json.deinit();
+
+    // Create view
+    const max_len: usize = switch (data) {
+        .json => |j| j.value.array.items.len,
+        .err => 0,
+    };
+    const view_buf = try alloc.alloc([]const u8, max_len);
+    defer alloc.free(view_buf);
+    var view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
     const focused = false;
     try view.render(stdout, focused);
 
@@ -178,7 +165,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                     switch (result) {
                         .consumed => {
                             try panel.draw(stdout, all_titles[tab_bar.selected]);
-                            view = View.init(tab_bar.selected, panel.rect, &json);
+                            view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
                             try view.render(stdout, false);
                         },
                         .move_to => {
@@ -188,7 +175,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                             };
 
                             try tab_bar.draw(stdout, zone == .menu);
-                            view = View.init(tab_bar.selected, panel.rect, &json);
+                            view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
                             try view.render(stdout, zone == .content);
 
                             //                             try tab_bar.draw(stdout, zone == .menu);

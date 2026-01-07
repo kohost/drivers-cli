@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const Mode = enum { normal, command };
 pub const Rect = struct {
     x: u16,
@@ -10,3 +12,4 @@ pub const KeyResult = union(enum) {
     move_to: enum { up, down },
     unhandled,
 };
+pub const Data = union(enum) { json: std.json.Parsed(std.json.Value), err: []const u8 };

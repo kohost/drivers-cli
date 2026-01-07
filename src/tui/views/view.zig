@@ -2,6 +2,7 @@ const std = @import("std");
 const DevicesView = @import("./devices.zig").DevicesView;
 const Rect = @import("../types.zig").Rect;
 const KeyResult = @import("../types.zig").KeyResult;
+const Data = @import("../types.zig").Data;
 
 pub const View = union(enum) {
     devices: DevicesView,
@@ -12,9 +13,9 @@ pub const View = union(enum) {
 
     const Self = @This();
 
-    pub fn init(number: usize, area: Rect, data: *const std.json.Parsed(std.json.Value)) Self {
+    pub fn init(number: usize, area: Rect, data: *const Data, buf: [][]const u8) Self {
         return switch (number) {
-            0 => .{ .devices = DevicesView.init(area, data) },
+            0 => .{ .devices = DevicesView.init(area, data, buf) },
             else => .none,
         };
     }
