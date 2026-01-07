@@ -9,7 +9,7 @@ pub const Panel = struct {
         return .{ .rect = .{ .x = x, .y = y, .width = width, .height = height } };
     }
 
-    pub fn draw(self: Panel, stdout: std.fs.File, titles: []const []const u8) !void {
+    pub fn draw(self: Panel, stdout: std.fs.File, titles: []const ?[]const u8) !void {
         // Move to position
         var pos_buf: [32]u8 = undefined;
         var pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.rect.y, self.rect.x });
@@ -21,7 +21,8 @@ pub const Panel = struct {
         try stdout.writeAll(Color.dim);
         try stdout.writeAll("┌┐");
         try stdout.writeAll(Color.reset);
-        for (titles, 0..) |title, idx| {
+        for (titles, 0..) |maybe_title, idx| {
+            const title = maybe_title orelse continue; // skip nulls
             titles_len += @intCast(title.len);
             try stdout.writeAll(title);
             if (idx < titles.len - 1) {

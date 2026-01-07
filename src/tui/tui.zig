@@ -106,17 +106,6 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     try tab_bar.draw(stdout, zone == .menu);
     try moveTo(stdout, content, 0, 4);
 
-    // Draw panel
-    var port_buf: [5]u8 = undefined;
-    const port_str = try std.fmt.bufPrint(&port_buf, "{d}", .{cfg.port});
-    const tab_1_titles: [2][]const u8 = .{ cfg.host, port_str };
-    const tab_2_titles: [1][]const u8 = .{"api_config"};
-    const tab_3_titles: [1][]const u8 = .{"log_config"};
-    const tab_4_titles: [1][]const u8 = .{"settings_config"};
-    const all_titles: [4][]const []const u8 = .{ &tab_1_titles, &tab_2_titles, &tab_3_titles, &tab_4_titles };
-    try panel.draw(stdout, all_titles[tab_bar.selected]);
-
-    // Draw initial panel content
     // Get data
     const data: Data = blk: {
         const stream = connection.connect(cfg.host, cfg.port) catch |e| break :blk .{ .err = @errorName(e) };
@@ -127,10 +116,33 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
         break :blk .{ .json = parsed };
     };
     defer if (data == .json) data.json.deinit();
+    const manufacturer = blk: {
+        const json = switch (data) {
+            .json => |j| j,
+            .err => break :blk null,
+        };
+        const ctx = json.value.object.get("context") orelse break :blk null;
+        const sys = ctx.object.get("system") orelse break :blk null;
+        const man = sys.object.get("manufacturer") orelse break :blk null;
+        break :blk man.string;
+    };
 
-    // Create view
+    // Draw panel
+    var port_buf: [5]u8 = undefined;
+    const port_str = try std.fmt.bufPrint(&port_buf, "{d}", .{cfg.port});
+    const tab_1_titles: [3]?[]const u8 = .{ manufacturer, cfg.host, port_str };
+    const tab_2_titles: [1]?[]const u8 = .{"api_config"};
+    const tab_3_titles: [1]?[]const u8 = .{"log_config"};
+    const tab_4_titles: [1]?[]const u8 = .{"settings_config"};
+    const all_titles: [4][]const ?[]const u8 = .{ &tab_1_titles, &tab_2_titles, &tab_3_titles, &tab_4_titles };
+    try panel.draw(stdout, all_titles[tab_bar.selected]);
+
+    // Draw content
     const max_len: usize = switch (data) {
-        .json => |j| j.value.array.items.len,
+        .json => |j| blk: {
+            const devices = j.value.object.get("data") orelse break :blk 0;
+            break :blk devices.array.items.len;
+        },
         .err => 0,
     };
     const view_buf = try alloc.alloc([]const u8, max_len);

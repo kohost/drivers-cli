@@ -38,7 +38,10 @@ pub const DevicesView = struct {
 
     pub fn init(area: Rect, data: *const Data, buf: [][]const u8) Self {
         const row_count: u8 = switch (data.*) {
-            .json => |json| @intCast(json.value.array.items.len),
+            .json => |json| blk: {
+                const items = json.value.object.get("data") orelse break :blk 0;
+                break :blk @intCast(items.array.items.len);
+            },
             .err => 0,
         };
         return .{ .data = data, .cursor = 0, .area = area, .row_count = row_count, .selected = buf, .selected_len = 0 };
@@ -114,7 +117,8 @@ pub const DevicesView = struct {
         const row_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, xPos });
         try stdout.writeAll(row_pos);
 
-        const device = json.value.array.items[idx];
+        const devices = json.value.object.get("data") orelse return;
+        const device = devices.array.items[idx];
         const id = if (device.object.get("id")) |v| v.string else "";
         const is_selected = self.isSelected(id);
 
@@ -128,6 +132,7 @@ pub const DevicesView = struct {
         while (fill < self.area.width - 2) : (fill += 1) {
             try stdout.writeAll(" ");
         }
+        try stdout.writeAll(Color.reset);
 
         // Focus indicator
         const is_focused = idx == self.cursor;
@@ -138,7 +143,11 @@ pub const DevicesView = struct {
             try stdout.writeAll("┃");
         } else {
             try stdout.writeAll(Color.dim);
-            try stdout.writeAll("│");
+            if (is_selected) {
+                try stdout.writeAll("▐");
+            } else {
+                try stdout.writeAll("│");
+            }
         }
         try stdout.writeAll(Color.reset);
         if (is_selected) try stdout.writeAll(Color.bg_teal_dim);
