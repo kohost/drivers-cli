@@ -143,7 +143,6 @@ pub fn getData(alloc: std.mem.Allocator, str: []const u8) ![]const u8 {
 // Pretty prints JSON
 // Used to format (indent) JSON to console
 pub fn formatJSON(alloc: std.mem.Allocator, str: []const u8) ![]const u8 {
-    std.debug.print("{s}", .{str});
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, str, .{});
     defer parsed.deinit();
 

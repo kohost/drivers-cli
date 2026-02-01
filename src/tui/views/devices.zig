@@ -10,17 +10,18 @@ const emoji_map = std.StaticStringMap([]const u8).initComptime(.{
     .{ "lock", "🔒" },
     .{ "mediaSource", "📺" },
     .{ "thermostat", "🌡️" },
+    .{ "motionSensor", "🏃🏼‍♂️" },
 });
-const Column = struct { name: []const u8, key: []const u8, width: u8, align_right: bool };
+const Column = struct { name: []const u8, key: []const u8, align_right: bool };
 const columns = [_]Column{
-    .{ .name = "Type", .key = "type", .width = 6, .align_right = true },
-    .{ .name = "Id", .key = "id", .width = 8, .align_right = false },
-    .{ .name = "Name", .key = "name", .width = 24, .align_right = false },
-    .{ .name = "Model", .key = "modelNumber", .width = 16, .align_right = true },
-    .{ .name = "Serial", .key = "serialNumber", .width = 16, .align_right = false },
-    .{ .name = "Online", .key = "offline", .width = 8, .align_right = true },
-    .{ .name = "Wattage", .key = "watts", .width = 8, .align_right = false },
-    .{ .name = "Firmware", .key = "firmwareVersion", .width = 8, .align_right = false },
+    .{ .name = "Type", .key = "type", .align_right = true },
+    .{ .name = "Id", .key = "id", .align_right = false },
+    .{ .name = "Name", .key = "name", .align_right = false },
+    .{ .name = "Model", .key = "modelNumber", .align_right = true },
+    .{ .name = "Serial", .key = "serialNumber", .align_right = false },
+    .{ .name = "Online", .key = "offline", .align_right = true },
+    .{ .name = "Wattage", .key = "watts", .align_right = false },
+    .{ .name = "Firmware", .key = "firmwareVersion", .align_right = false },
 };
 
 pub const DevicesView = struct {
@@ -33,10 +34,13 @@ pub const DevicesView = struct {
     last_key: u8 = 0,
     selected: [][]const u8,
     selected_len: u8 = 0,
+    column_widths: [columns.len]u8,
 
     const Self = @This();
 
     pub fn init(area: Rect, data: *const Data, buf: [][]const u8) Self {
+        const column_widths: [columns.len]u8 = computeColumnWidths(data);
+
         const row_count: u8 = switch (data.*) {
             .json => |json| blk: {
                 const items = json.value.object.get("data") orelse break :blk 0;
@@ -44,7 +48,7 @@ pub const DevicesView = struct {
             },
             .err => 0,
         };
-        return .{ .data = data, .cursor = 0, .area = area, .row_count = row_count, .selected = buf, .selected_len = 0 };
+        return .{ .data = data, .cursor = 0, .area = area, .row_count = row_count, .selected = buf, .selected_len = 0, .column_widths = column_widths };
     }
 
     pub fn render(self: *Self, stdout: std.fs.File, has_focus: bool) !void {
@@ -53,24 +57,50 @@ pub const DevicesView = struct {
         try self.writeRows(stdout);
     }
 
+    fn computeColumnWidths(data: *const Data) [columns.len]u8 {
+        var widths: [columns.len]u8 = undefined;
+
+        for (columns, 0..) |col, idx| {
+            widths[idx] = @intCast(col.name.len + 1);
+        }
+
+        switch (data.*) {
+            .json => |json| {
+                const items = json.value.object.get("data") orelse return widths;
+
+                for (items.array.items) |device| {
+                    for (columns, 0..) |col, idx| {
+                        if (device.object.get(col.key)) |val| {
+                            if (val == .string) {
+                                widths[idx] = @max(widths[idx], @as(u8, @intCast(val.string.len)));
+                            }
+                        }
+                    }
+                }
+            },
+            .err => {},
+        }
+        return widths;
+    }
+
     fn writeHeader(self: *Self, stdout: std.fs.File) !void {
         const padding: u8 = 1;
         var pos_buf: [16]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + padding, self.area.x + padding });
         try stdout.writeAll(pos);
 
-        for (columns) |col| {
+        for (columns, 0..) |col, idx| {
             var buf: [16]u8 = undefined;
             const label = try std.fmt.bufPrint(&buf, "{s}:", .{col.name});
             const len: u8 = @intCast(label.len);
             if (col.align_right) {
-                var pad = col.width - len;
+                var pad = self.column_widths[idx] - len;
                 while (pad > 0) : (pad -= 1) try stdout.writeAll(" ");
                 try stdout.writeAll(label);
             } else {
                 try stdout.writeAll(label);
                 var pad: u8 = len;
-                while (pad < col.width) : (pad += 1) try stdout.writeAll(" ");
+                while (pad < self.column_widths[idx]) : (pad += 1) try stdout.writeAll(" ");
             }
             try stdout.writeAll(" ");
         }
@@ -183,22 +213,22 @@ pub const DevicesView = struct {
                 };
 
                 if (col.align_right) {
-                    var pad: u8 = col.width - data_len;
+                    var pad: u8 = self.column_widths[col_idx] - data_len;
                     while (pad > 0) : (pad -= 1) try stdout.writeAll(" ");
                     try stdout.writeAll(data);
                 } else {
                     try stdout.writeAll(data);
-                    while (data_len < col.width) : (data_len += 1) try stdout.writeAll(" ");
+                    while (data_len < self.column_widths[col_idx]) : (data_len += 1) try stdout.writeAll(" ");
                 }
             } else {
                 if (col.align_right) {
-                    var pad: u8 = col.width - 1;
+                    var pad: u8 = self.column_widths[col_idx] - 1;
                     while (pad > 0) : (pad -= 1) try stdout.writeAll(" ");
                     try stdout.writeAll("-");
                 } else {
                     try stdout.writeAll("-");
                     var pad: u8 = 1;
-                    while (pad < col.width) : (pad += 1) try stdout.writeAll(" ");
+                    while (pad < self.column_widths[col_idx]) : (pad += 1) try stdout.writeAll(" ");
                 }
             }
 
@@ -236,7 +266,8 @@ pub const DevicesView = struct {
         switch (self.data.*) {
             .err => return,
             .json => |json| {
-                const item = json.value.array.items[self.cursor];
+                const devices = json.value.object.get("data") orelse return;
+                const item = devices.array.items[self.cursor];
                 const val = item.object.get("id") orelse return;
                 const id = val.string;
 
@@ -255,7 +286,8 @@ pub const DevicesView = struct {
         switch (self.data.*) {
             .err => return,
             .json => |json| {
-                const item = json.value.array.items[self.cursor];
+                const devices = json.value.object.get("data") orelse return;
+                const item = devices.array.items[self.cursor];
                 const val = item.object.get("id") orelse return;
                 const id = val.string;
 

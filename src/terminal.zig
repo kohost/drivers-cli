@@ -16,7 +16,7 @@ const KEY_ARROW_LEFT = 'D';
 const KEY_HOME = 'H';
 const KEY_END = 'F';
 
-const EscapeAction = enum { none, up, down, left, right, word_left, word_right, word_delete };
+const EscapeAction = enum { none, up, down, left, right, word_left, word_right, word_delete, home, end };
 
 pub fn enableRawMode() !std.posix.termios {
     const stdin = std.fs.File.stdin();
@@ -69,6 +69,8 @@ fn readEscSeq(stdin: std.fs.File) !EscapeAction {
         KEY_ARROW_DOWN => .down,
         KEY_ARROW_RIGHT => .right,
         KEY_ARROW_LEFT => .left,
+        KEY_HOME => .home,
+        KEY_END => .end,
         else => .none,
     };
 }
@@ -283,6 +285,17 @@ pub fn readUserInput(buf: *[1024]u8, history: *std.ArrayList([]const u8), prompt
                         }
                     }
                 },
+                .home => {
+                    cursor = 0;
+                    try stdout.writeAll("\r");
+                    try stdout.writeAll(prompt);
+                },
+                .end => {
+                    cursor = pos;
+                    try stdout.writeAll("\r");
+                    try stdout.writeAll(prompt);
+                    try stdout.writeAll(buf[0..pos]);
+                },
                 .none => {},
             }
             continue;
@@ -296,14 +309,6 @@ pub fn readUserInput(buf: *[1024]u8, history: *std.ArrayList([]const u8), prompt
             continue;
         }
 
-        // End
-        if (c == KEY_END) {
-            cursor = pos;
-            try stdout.writeAll("\r");
-            try stdout.writeAll(prompt);
-            try stdout.writeAll(buf[0..pos]);
-            continue;
-        }
 
         // Enter
         if (c == '\r' or c == '\n') {
