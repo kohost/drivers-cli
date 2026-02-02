@@ -73,7 +73,6 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
         content.x,
         content.y + 3,
     );
-    var panel = panels.Panel.init(content.x, content.y + 5, content.width, content.height - 5);
 
     // Enter alternate buffer, clear, hide cursor
     try stdout.writeAll("\x1b[?1049h\x1b[2J");
@@ -126,8 +125,17 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
         const man = sys.object.get("manufacturer") orelse break :blk null;
         break :blk man.string;
     };
+    const item_count: u8 = switch (data) {
+        .json => |json| blk: {
+            const devices = json.value.object.get("data") orelse break :blk 0;
+            break :blk @intCast(devices.array.items.len);
+        },
+        .err => 0,
+    };
 
     // Draw panel
+    const panelHeight: u8 = item_count + 3;
+    var panel = panels.Panel.init(content.x, content.y + 5, content.width, panelHeight);
     var port_buf: [5]u8 = undefined;
     const port_str = try std.fmt.bufPrint(&port_buf, "{d}", .{cfg.port});
     const tab_1_titles: [3]?[]const u8 = .{ manufacturer, cfg.host, port_str };
@@ -136,6 +144,9 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     const tab_4_titles: [1]?[]const u8 = .{"settings_config"};
     const all_titles: [4][]const ?[]const u8 = .{ &tab_1_titles, &tab_2_titles, &tab_3_titles, &tab_4_titles };
     try panel.draw(stdout, all_titles[tab_bar.selected]);
+
+    // Init detail panel for use later
+    var detail_panel = panels.Panel.init(panel.rect.x, panel.rect.y + panel.rect.height, panel.rect.width, 4);
 
     // Draw content
     const max_len: usize = switch (data) {
@@ -190,10 +201,37 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                             view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
                             try view.render(stdout, zone == .content);
 
-                            //                             try tab_bar.draw(stdout, zone == .menu);
-                            //                             try drawPanelContent(stdout, alloc, panel, tab_bar.selected, cfg);
+                            // Draw or clear detail panel based on zone
+                            if (zone == .content and tab_bar.selected == 0) {
+                                const device_id: ?[]const u8 = switch (data) {
+                                    .json => |json| blk: {
+                                        const devices = json.value.object.get("data") orelse break :blk null;
+                                        const device = devices.array.items[view.devices.cursor];
+                                        break :blk if (device.object.get("id")) |id| id.string else null;
+                                    },
+                                    .err => null,
+                                };
+                                const detail_titles: [1]?[]const u8 = .{device_id};
+                                try detail_panel.draw(stdout, &detail_titles);
+                            } else {
+                                // Clear detail panel
+                                try detail_panel.clear(stdout);
+                            }
                         },
                         .unhandled => {},
+                    }
+                    // Refresh device detail panel
+                    if (zone == .content and tab_bar.selected == 0) {
+                        const device_id: ?[]const u8 = switch (data) {
+                            .json => |json| blk: {
+                                const devices = json.value.object.get("data") orelse break :blk null;
+                                const device = devices.array.items[view.devices.cursor];
+                                break :blk if (device.object.get("id")) |id| id.string else null;
+                            },
+                            .err => null,
+                        };
+                        const detail_titles: [1]?[]const u8 = .{device_id};
+                        try detail_panel.draw(stdout, &detail_titles);
                     }
                 }
             },

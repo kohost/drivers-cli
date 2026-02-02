@@ -195,6 +195,10 @@ pub const DevicesView = struct {
                 const data: []const u8 = switch (val) {
                     .string => |s| blk: {
                         data_len = @intCast(s.len);
+                        if (data_len == 0) {
+                            data_len = 1;
+                            break :blk "-";
+                        }
                         if (std.mem.eql(u8, "Type", col.name)) {
                             if (emoji_map.get(s)) |e| {
                                 data_len = 2;

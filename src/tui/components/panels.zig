@@ -19,7 +19,7 @@ pub const Panel = struct {
         // Top
         try stdout.writeAll(Color.teal);
         try stdout.writeAll(Color.dim);
-        try stdout.writeAll("┌┐");
+        try stdout.writeAll("╭ ");
         try stdout.writeAll(Color.reset);
         for (titles, 0..) |maybe_title, idx| {
             const title = maybe_title orelse continue; // skip nulls
@@ -29,22 +29,22 @@ pub const Panel = struct {
                 titles_len += 2;
                 try stdout.writeAll(Color.teal);
                 try stdout.writeAll(Color.dim);
-                try stdout.writeAll("┌┐");
+                try stdout.writeAll("::");
                 try stdout.writeAll(Color.reset);
             }
         }
         try stdout.writeAll(Color.teal);
         try stdout.writeAll(Color.dim);
-        try stdout.writeAll("┌");
+        try stdout.writeAll(" ─");
 
         // self.title.len is usize so we cast to int
-        var i: u8 = 4 + titles_len;
+        var i: u8 = 5 + titles_len;
 
         while (i < self.rect.width) : (i += 1) {
             try stdout.writeAll("─");
         }
 
-        try stdout.writeAll("┐");
+        try stdout.writeAll("╮");
 
         // Sides
         var row: u16 = 1;
@@ -66,13 +66,23 @@ pub const Panel = struct {
         pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.rect.y + self.rect.height - 1, self.rect.x });
 
         try stdout.writeAll(pos);
-        try stdout.writeAll("└");
+        try stdout.writeAll("╰");
         i = 1;
         while (i < self.rect.width - 1) : (i += 1) {
             try stdout.writeAll("─");
         }
-        try stdout.writeAll("┘");
+        try stdout.writeAll("╯");
 
         try stdout.writeAll(Color.reset);
+    }
+
+    pub fn clear(self: Panel, stdout: std.fs.File) !void {
+        var pos_buf: [32]u8 = undefined;
+        var row: u16 = 0;
+        while (row < self.rect.height) : (row += 1) {
+            const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.rect.y + row, self.rect.x });
+            try stdout.writeAll(pos);
+            try stdout.writeAll("\x1b[K");
+        }
     }
 };
