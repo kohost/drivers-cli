@@ -1,23 +1,23 @@
 const std = @import("std");
 const term = @import("../terminal.zig");
 const connection = @import("../connection.zig");
-const Color = @import("./color.zig");
 const tabs = @import("./components/tabs.zig");
 const panels = @import("./components/panels.zig");
+const AppState = @import("state/state.zig").AppState;
 const View = @import("./views/view.zig").View;
-const api_view = @import("./views/api.zig");
 const Config = @import("../main.zig").Config;
 const Mode = @import("./types.zig").Mode;
 const Rect = @import("./types.zig").Rect;
 const KeyResult = @import("./types.zig").KeyResult;
-const Data = @import("./types.zig").Data;
+const api_view = @import("./views/api.zig");
+const Color = @import("./color.zig");
+const Zone = enum { menu, content };
 const Cursor = struct {
     pub const save = "\x1b[s";
     pub const restore = "\x1b[u";
     pub const hide = "\x1b[?25l";
     pub const show = "\x1b[?25h";
 };
-const Zone = enum { menu, content };
 
 fn print(stdout: std.fs.File, text: []const u8, opts: struct {
     color: ?[]const u8 = null,
@@ -105,60 +105,29 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     try tab_bar.draw(stdout, zone == .menu);
     try moveTo(stdout, content, 0, 4);
 
-    // Get data
-    const data: Data = blk: {
-        const stream = connection.connect(cfg.host, cfg.port) catch |e| break :blk .{ .err = @errorName(e) };
+    // Initialize data
+    var state = AppState.init(alloc);
+    defer state.deinit();
+
+    // Load initial state
+    const init_err: ?[]const u8 = blk: {
+        const stream = connection.connect(cfg.host, cfg.port) catch |err| break :blk @errorName(err);
         defer stream.close();
-        const raw = connection.sendCmd(stream, alloc, "GetDevices") catch |e| break :blk .{ .err = @errorName(e) };
+        const raw = connection.sendCmd(stream, alloc, "GetDevices") catch |err| break :blk @errorName(err);
         defer alloc.free(raw);
-        const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch |e| break :blk .{ .err = @errorName(e) };
-        break :blk .{ .json = parsed };
+        const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch |err| break :blk @errorName(err);
+        defer parsed.deinit();
+        state.loadFromJson(parsed.value) catch |err| break :blk @errorName(err);
+        break :blk null;
     };
-    defer if (data == .json) data.json.deinit();
-    const manufacturer = blk: {
-        const json = switch (data) {
-            .json => |j| j,
-            .err => break :blk null,
-        };
-        const ctx = json.value.object.get("context") orelse break :blk null;
-        const sys = ctx.object.get("system") orelse break :blk null;
-        const man = sys.object.get("manufacturer") orelse break :blk null;
-        break :blk man.string;
-    };
-    const item_count: u8 = switch (data) {
-        .json => |json| blk: {
-            const devices = json.value.object.get("data") orelse break :blk 0;
-            break :blk @intCast(devices.array.items.len);
-        },
-        .err => 0,
-    };
-
-    // Draw panel
-    const panelHeight: u8 = item_count + 3;
-    var panel = panels.Panel.init(content.x, content.y + 5, content.width, panelHeight);
-    var port_buf: [5]u8 = undefined;
-    const port_str = try std.fmt.bufPrint(&port_buf, "{d}", .{cfg.port});
-    const tab_1_titles: [3]?[]const u8 = .{ manufacturer, cfg.host, port_str };
-    const tab_2_titles: [1]?[]const u8 = .{"api_config"};
-    const tab_3_titles: [1]?[]const u8 = .{"log_config"};
-    const tab_4_titles: [1]?[]const u8 = .{"settings_config"};
-    const all_titles: [4][]const ?[]const u8 = .{ &tab_1_titles, &tab_2_titles, &tab_3_titles, &tab_4_titles };
-    try panel.draw(stdout, all_titles[tab_bar.selected]);
-
-    // Init detail panel for use later
-    var detail_panel = panels.Panel.init(panel.rect.x, panel.rect.y + panel.rect.height, panel.rect.width, 4);
+    _ = init_err; // TODO: need to use this err
 
     // Draw content
-    const max_len: usize = switch (data) {
-        .json => |j| blk: {
-            const devices = j.value.object.get("data") orelse break :blk 0;
-            break :blk devices.array.items.len;
-        },
-        .err => 0,
-    };
-    const view_buf = try alloc.alloc([]const u8, max_len);
+    const view_buf = try alloc.alloc([]const u8, state.devices.items.len);
     defer alloc.free(view_buf);
-    var view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
+    var view_content = content;
+    view_content.y += 5;
+    var view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf);
     const focused = false;
     try view.render(stdout, focused);
 
@@ -187,8 +156,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
 
                     switch (result) {
                         .consumed => {
-                            try panel.draw(stdout, all_titles[tab_bar.selected]);
-                            view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
+                            view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf);
                             try view.render(stdout, false);
                         },
                         .move_to => {
@@ -198,40 +166,51 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                             };
 
                             try tab_bar.draw(stdout, zone == .menu);
-                            view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
+                            //                             view = View.init(tab_bar.selected, panel.rect, &data, view_buf);
                             try view.render(stdout, zone == .content);
 
                             // Draw or clear detail panel based on zone
                             if (zone == .content and tab_bar.selected == 0) {
-                                const device_id: ?[]const u8 = switch (data) {
-                                    .json => |json| blk: {
-                                        const devices = json.value.object.get("data") orelse break :blk null;
-                                        const device = devices.array.items[view.devices.cursor];
-                                        break :blk if (device.object.get("id")) |id| id.string else null;
-                                    },
-                                    .err => null,
-                                };
-                                const detail_titles: [1]?[]const u8 = .{device_id};
-                                try detail_panel.draw(stdout, &detail_titles);
+                                //                                 const device_id: ?[]const u8 = switch (data) {
+                                //                                     .json => |json| blk: {
+                                //                                         const devices = json.value.object.get("data") orelse break :blk null;
+                                //                                         const device = devices.array.items[view.devices.cursor];
+                                //                                         break :blk if (device.object.get("id")) |id| id.string else null;
+                                //                                     },
+                                //                                     .err => null,
+                                //                                 };
+                                //                                 const detail_titles: [1]?[]const u8 = .{device_id};
+                                //                                 try detail_panel.draw(stdout, &detail_titles);
                             } else {
                                 // Clear detail panel
-                                try detail_panel.clear(stdout);
+                                //                                 try detail_panel.clear(stdout);
                             }
+                        },
+                        .command => |cmd| {
+                            const stream = connection.connect(cfg.host, cfg.port) catch continue;
+                            defer stream.close();
+                            const raw = connection.sendCmd(stream, alloc, cmd) catch continue;
+                            defer alloc.free(raw);
+                            const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch continue;
+                            defer parsed.deinit();
+                            state.update(parsed.value);
+
+                            try view.render(stdout, zone == .content);
                         },
                         .unhandled => {},
                     }
                     // Refresh device detail panel
                     if (zone == .content and tab_bar.selected == 0) {
-                        const device_id: ?[]const u8 = switch (data) {
-                            .json => |json| blk: {
-                                const devices = json.value.object.get("data") orelse break :blk null;
-                                const device = devices.array.items[view.devices.cursor];
-                                break :blk if (device.object.get("id")) |id| id.string else null;
-                            },
-                            .err => null,
-                        };
-                        const detail_titles: [1]?[]const u8 = .{device_id};
-                        try detail_panel.draw(stdout, &detail_titles);
+                        //                         const device_id: ?[]const u8 = switch (data) {
+                        //                             .json => |json| blk: {
+                        //                                 const devices = json.value.object.get("data") orelse break :blk null;
+                        //                                 const device = devices.array.items[view.devices.cursor];
+                        //                                 break :blk if (device.object.get("id")) |id| id.string else null;
+                        //                             },
+                        //                             .err => null,
+                        //                         };
+                        //                         const detail_titles: [1]?[]const u8 = .{device_id};
+                        //                         try detail_panel.draw(stdout, &detail_titles);
                     }
                 }
             },
