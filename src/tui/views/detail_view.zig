@@ -30,4 +30,11 @@ pub const DetailView = union(enum) {
             .none => .unhandled,
         };
     }
+
+    pub fn hasOpenSelect(self: *Self) bool {
+        return switch (self.*) {
+            .lock => |*v| v.mode_select.open,
+            .none => false,
+        };
+    }
 };

@@ -148,7 +148,7 @@ pub const DevicesView = struct {
         const is_selected = self.isSelected(id);
 
         if (is_selected) {
-            try stdout.writeAll(Color.bg_teal_dim);
+            try stdout.writeAll(Color.bg_surface0);
         }
 
         var fill: u16 = 0;
@@ -161,7 +161,7 @@ pub const DevicesView = struct {
         const indicator_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, self.area.x });
         try stdout.writeAll(indicator_pos);
         try stdout.writeAll(Color.teal);
-        if (self.has_focus and is_focused) {
+        if (self.has_focus and is_focused and !self.detail_focus) {
             try stdout.writeAll("┃");
         } else {
             try stdout.writeAll(Color.dim);
@@ -172,7 +172,7 @@ pub const DevicesView = struct {
             }
         }
         try stdout.writeAll(Color.reset);
-        if (is_selected) try stdout.writeAll(Color.bg_teal_dim);
+        if (is_selected) try stdout.writeAll(Color.bg_surface0);
         try stdout.writeAll(" ");
 
         const col_values = [_]struct { data: []const u8, len: u8 }{
@@ -209,7 +209,7 @@ pub const DevicesView = struct {
 
             try stdout.writeAll(" ");
             try stdout.writeAll(Color.reset);
-            if (is_selected) try stdout.writeAll(Color.bg_teal_dim);
+            if (is_selected) try stdout.writeAll(Color.bg_surface0);
         }
 
         try stdout.writeAll(Color.reset);
@@ -374,17 +374,15 @@ pub const DevicesView = struct {
     }
 
     pub fn handleDetailKey(self: *Self, stdout: std.fs.File, c: u8) !KeyResult {
-        return switch (c) {
-            0x1b => blk: {
-                self.detail_focus = false;
-                self.detail = .none;
-                try self.updateFocus(stdout, self.cursor, true);
-                try self.clearDetail(stdout);
-                try self.renderDetail(stdout);
-                break :blk .unhandled;
-            },
-            else => self.detail.handleKey(stdout, c),
-        };
+        if (c == 0x1b and !self.detail.hasOpenSelect()) {
+            self.detail_focus = false;
+            self.detail = .none;
+            try self.updateFocus(stdout, self.cursor, true);
+            try self.clearDetail(stdout);
+            try self.renderDetail(stdout);
+            return .unhandled;
+        }
+        return try self.detail.handleKey(stdout, c);
     }
 
     fn getDeviceById(self: *Self, id: []const u8) ?*Device {

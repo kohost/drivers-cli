@@ -15,16 +15,23 @@ pub const Toggle = struct {
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.y, self.x });
         try stdout.writeAll(pos);
 
+        if (state) {
+            try stdout.writeAll(Color.green);
+            try stdout.writeAll("✔︎ ");
+        } else {
+            try stdout.writeAll(Color.red);
+            try stdout.writeAll("✘ ");
+        }
+        try stdout.writeAll(Color.reset);
+
         if (focused) {
             try stdout.writeAll("\x1b[4m");
             try stdout.writeAll(Color.underline_teal);
         }
 
         if (state) {
-            try stdout.writeAll("✔︎ ");
             try stdout.writeAll(self.labels[0]);
         } else {
-            try stdout.writeAll("✘ ");
             try stdout.writeAll(self.labels[1]);
         }
 

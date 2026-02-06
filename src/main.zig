@@ -5,8 +5,13 @@ const parse = @import("./parse.zig");
 const term = @import("./terminal.zig");
 const commands = @import("./commands.zig");
 const tui = @import("./tui/tui.zig");
+const amqp = @import("amqp");
 
 pub const Config = struct { host: []const u8, port: u16, use_tui: bool };
+pub const std_options = std.Options{
+    .log_level = .debug,
+    .logFn = myLog,
+};
 
 pub fn main() !void {
     // Get allocator
@@ -144,4 +149,14 @@ fn parseArgs(args: [][:0]u8) !Config {
         .port = port,
         .use_tui = use_tui,
     };
+}
+
+fn myLog(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.enum_literal),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    if (scope == .amqp) return;
+    std.log.defaultLog(level, scope, format, args);
 }

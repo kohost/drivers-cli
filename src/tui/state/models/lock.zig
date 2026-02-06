@@ -63,9 +63,7 @@ pub const Lock = struct {
             self.state = if (std.mem.eql(u8, v.string, "locked")) .locked else .unlocked;
         }
         if (json.get("mode")) |v| {
-            self.mode = if (std.mem.eql(u8, v.string, "holdOpen")) .holdOpen
-                else if (std.mem.eql(u8, v.string, "lockdown")) .lockdown
-                    else .autoLock;
+            self.mode = if (std.mem.eql(u8, v.string, "holdOpen")) .holdOpen else if (std.mem.eql(u8, v.string, "lockdown")) .lockdown else .autoLock;
         }
         if (json.get("offline")) |v| {
             self.offline = v.bool;

@@ -14,6 +14,13 @@ pub fn build(b: *std.Build) void {
     };
     const module = b.createModule(moduleCfg);
 
+    // Add vendored amqp module
+    module.addImport("amqp", b.createModule(.{
+        .root_source_file = b.path("src/lib/amqp/amqp.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+
     // Add version from build options
     const options = b.addOptions();
     const git_describe = b.run(&.{ "git", "describe", "--tags", "--abbrev=0" });

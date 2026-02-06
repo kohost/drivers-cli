@@ -11,6 +11,7 @@ const Rect = @import("./types.zig").Rect;
 const KeyResult = @import("./types.zig").KeyResult;
 const api_view = @import("./views/api.zig");
 const Color = @import("./color.zig");
+const amqp = @import("amqp");
 const Zone = enum { menu, content };
 const Cursor = struct {
     pub const save = "\x1b[s";
@@ -62,7 +63,6 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     const original_termios = try term.enableRawMode();
     defer term.disableRawMode(original_termios) catch {};
     const termSize = try getTermSize();
-
     const padding: u16 = 2;
     const content = Rect{ .x = padding, .y = padding, .width = termSize.cols - (padding * 2), .height = termSize.rows - padding };
     var mode = Mode.normal;
@@ -128,15 +128,48 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     var view_content = content;
     view_content.y += 5;
     var view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf);
-    const focused = false;
-    try view.render(stdout, focused);
+    try view.render(stdout, zone == .content);
+
+    // AMQP setup
+    var rx_mem: [4096]u8 = undefined;
+    var tx_mem: [4096]u8 = undefined;
+    var amqp_conn = amqp.Connection.init(&rx_mem, &tx_mem);
+    const address = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 5672);
+    amqp_conn.connect(address, "\x00user\x00password") catch |err| {
+        std.debug.print("AMQP connect failed: {s}\n", .{@errorName(err)});
+        return;
+    };
+    defer amqp_conn.deinit();
+
+    var ch = try amqp_conn.channel();
+    const queue_name = try ch.queueDeclare("", .{ .exclusive = true, .auto_delete = true }, null);
+    try ch.queueBind(queue_name, "kohost.events.drivers", "#");
+    var consumer = try ch.basicConsume(queue_name, .{ .no_ack = true }, null);
 
     // Main loop
     var running = true;
+    var poll_fds = [_]std.posix.pollfd{
+        .{ .fd = stdin.handle, .events = std.posix.POLL.IN, .revents = 0 },
+        .{ .fd = consumer.connector.file.handle, .events = std.posix.POLL.IN, .revents = 0 },
+    };
 
     while (running) {
+        _ = std.posix.poll(&poll_fds, 100) catch continue;
+
+        // Handle AMQP message
+        if (poll_fds[1].revents & std.posix.POLL.IN != 0) {
+            const msg = consumer.next() catch continue;
+            const parsed = std.json.parseFromSlice(std.json.Value, alloc, msg.body, .{}) catch continue;
+            defer parsed.deinit();
+            state.update(parsed.value);
+
+            try view.render(stdout, zone == .content);
+        }
+
+        // Handle keypress
+        if (poll_fds[0].revents & std.posix.POLL.IN == 0) continue;
         var buf: [1]u8 = undefined;
-        const n = try stdin.read(&buf);
+        const n = stdin.read(&buf) catch continue;
         if (n == 0) continue;
         const c = buf[0];
 

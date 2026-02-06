@@ -69,6 +69,7 @@ pub const AppState = struct {
 
     pub fn update(self: *AppState, json: std.json.Value) void {
         const data = json.object.get("data") orelse return;
+        if (data != .array) return;
 
         for (data.array.items) |item| {
             const updated_id = if (item.object.get("id")) |v| v.string else continue;
