@@ -67,15 +67,17 @@ pub const AppState = struct {
         }
     }
 
-    pub fn update(self: *AppState, json: std.json.Value) void {
-        const data = json.object.get("data") orelse return;
-        if (data != .array) return;
+    pub fn update(self: *AppState, json: std.json.Value) bool {
+        const data = json.object.get("data") orelse return false;
+        if (data != .array) return false;
 
+        var changed = false;
         for (data.array.items) |item| {
             const updated_id = if (item.object.get("id")) |v| v.string else continue;
             if (self.getDevice(updated_id)) |device| {
-                device.update(item.object);
+                if (device.update(item.object)) changed = true;
             }
         }
+        return changed;
     }
 };

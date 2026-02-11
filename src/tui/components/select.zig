@@ -22,7 +22,7 @@ pub const Select = struct {
             if (focused) {
                 try stdout.writeAll("▶︎ ");
                 try stdout.writeAll("\x1b[4m");
-                try stdout.writeAll(Color.underline_teal);
+                try stdout.writeAll(Color.underline_peach);
             } else {
                 try stdout.writeAll("▶︎ ");
             }
@@ -39,14 +39,16 @@ pub const Select = struct {
             if (i == self.cursor) {
                 try stdout.writeAll("▶︎ ");
                 try stdout.writeAll("\x1b[4m");
-                try stdout.writeAll(Color.underline_teal);
+                try stdout.writeAll(Color.underline_peach);
                 try stdout.writeAll(label);
                 try stdout.writeAll(Color.reset);
+                try stdout.writeAll(" ");
             } else {
                 try stdout.writeAll(Color.dim);
                 try stdout.writeAll("  ");
                 try stdout.writeAll(label);
                 try stdout.writeAll(Color.reset);
+                try stdout.writeAll(" ");
             }
         }
     }

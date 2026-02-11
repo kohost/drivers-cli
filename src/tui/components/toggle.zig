@@ -26,7 +26,7 @@ pub const Toggle = struct {
 
         if (focused) {
             try stdout.writeAll("\x1b[4m");
-            try stdout.writeAll(Color.underline_teal);
+            try stdout.writeAll(Color.underline_peach);
         }
 
         if (state) {

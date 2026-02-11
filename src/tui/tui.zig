@@ -11,6 +11,7 @@ const Rect = @import("./types.zig").Rect;
 const KeyResult = @import("./types.zig").KeyResult;
 const api_view = @import("./views/api.zig");
 const Color = @import("./color.zig");
+const Notification = @import("./components/notification.zig").Notification;
 const amqp = @import("amqp");
 const Zone = enum { menu, content };
 const Cursor = struct {
@@ -52,9 +53,35 @@ fn drawCmdLine(stdout: std.fs.File, content: Rect, cmd: []const u8) !void {
     try stdout.writeAll(cmd);
 }
 
+fn drawHeader(stdout: std.fs.File, content: Rect) !void {
+    try moveTo(stdout, content, 0, 0);
+    try print(stdout, "Kohost", .{ .color = Color.pink, .bold = true });
+    try moveTo(stdout, content, 0, 1);
+    try print(stdout, "Toolbox", .{ .dim = true });
+    const version = "v1.1.2";
+    try moveTo(stdout, content, content.width - @as(u16, @intCast(version.len)), 1);
+    try print(stdout, version, .{ .dim = true });
+    try moveTo(stdout, content, 0, 2);
+    var i: u16 = 0;
+    while (i < content.width) : (i += 1) {
+        try print(stdout, "─", .{ .dim = true });
+    }
+}
+
 fn clearCmdLine(stdout: std.fs.File, content: Rect) !void {
     try moveTo(stdout, content, 0, content.height);
     try stdout.writeAll("\x1b[K"); // clear line
+}
+
+fn getResponseError(json: std.json.Value) ?[]const u8 {
+    const errors = json.object.get("errors") orelse return null;
+    if (errors != .array) return null;
+    if (errors.array.items.len == 0) return null;
+    const first = errors.array.items[0];
+    if (first != .object) return null;
+    const msg = first.object.get("message") orelse return null;
+    if (msg != .string) return null;
+    return msg.string;
 }
 
 pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
@@ -78,25 +105,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     try stdout.writeAll("\x1b[?1049h\x1b[2J");
     try stdout.writeAll(Cursor.hide);
 
-    // Title
-    try moveTo(stdout, content, 0, 0);
-    try print(stdout, "Kohost", .{ .color = Color.pink, .bold = true });
-
-    // Subtitle + version on same line
-    try moveTo(stdout, content, 0, 1);
-    try print(stdout, "Toolbox", .{ .dim = true });
-
-    // Version on right
-    const version = "v1.1.2";
-    try moveTo(stdout, content, content.width - @as(u16, @intCast(version.len)), 1);
-    try print(stdout, version, .{ .dim = true });
-
-    // Draw header line
-    try moveTo(stdout, content, 0, 2);
-    var i: u16 = 0;
-    while (i < content.width) : (i += 1) {
-        try print(stdout, "─", .{ .dim = true });
-    }
+    try drawHeader(stdout, content);
 
     // Focus state
     var zone: Zone = .menu;
@@ -110,6 +119,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     defer state.deinit();
 
     // Load initial state
+    var notification = Notification.init();
     const init_err: ?[]const u8 = blk: {
         const stream = connection.connect(cfg.host, cfg.port) catch |err| break :blk @errorName(err);
         defer stream.close();
@@ -117,17 +127,21 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
         defer alloc.free(raw);
         const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch |err| break :blk @errorName(err);
         defer parsed.deinit();
+        if (getResponseError(parsed.value)) |err_msg| break :blk err_msg;
         state.loadFromJson(parsed.value) catch |err| break :blk @errorName(err);
         break :blk null;
     };
-    _ = init_err; // TODO: need to use this err
+    if (init_err) |err_msg| {
+        notification.show(err_msg);
+        notification.render(stdout, termSize.cols);
+    }
 
     // Draw content
     const view_buf = try alloc.alloc([]const u8, state.devices.items.len);
     defer alloc.free(view_buf);
     var view_content = content;
     view_content.y += 5;
-    var view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf);
+    var view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf, termSize.cols, termSize.rows);
     try view.render(stdout, zone == .content);
 
     // AMQP setup
@@ -154,16 +168,31 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     };
 
     while (running) {
-        _ = std.posix.poll(&poll_fds, 100) catch continue;
+        const animating = notification.isAnimating() or view.isAnimating();
+        const poll_timeout: i32 = if (animating) 16 else 100;
+        _ = std.posix.poll(&poll_fds, poll_timeout) catch continue;
+
+        if (notification.tick(stdout, termSize.cols)) {
+            try drawHeader(stdout, content);
+            notification.renderAnimated(stdout, termSize.cols);
+        }
+
+        if (view.isAnimating()) {
+            try view.tickSpinner(stdout);
+        }
 
         // Handle AMQP message
         if (poll_fds[1].revents & std.posix.POLL.IN != 0) {
             const msg = consumer.next() catch continue;
             const parsed = std.json.parseFromSlice(std.json.Value, alloc, msg.body, .{}) catch continue;
             defer parsed.deinit();
-            state.update(parsed.value);
-
-            try view.render(stdout, zone == .content);
+            if (getResponseError(parsed.value)) |err_msg| {
+                notification.show(err_msg);
+                notification.render(stdout, termSize.cols);
+            }
+            if (state.update(parsed.value)) {
+                try view.render(stdout, zone == .content);
+            }
         }
 
         // Handle keypress
@@ -189,7 +218,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
 
                     switch (result) {
                         .consumed => {
-                            view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf);
+                            view = View.init(tab_bar.selected, cfg, view_content, &state, view_buf, termSize.cols, termSize.rows);
                             try view.render(stdout, false);
                         },
                         .move_to => {
@@ -226,9 +255,13 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                             defer alloc.free(raw);
                             const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch continue;
                             defer parsed.deinit();
-                            state.update(parsed.value);
-
-                            try view.render(stdout, zone == .content);
+                            if (getResponseError(parsed.value)) |err_msg| {
+                                notification.show(err_msg);
+                                notification.render(stdout, termSize.cols);
+                            }
+                            if (state.update(parsed.value)) {
+                                try view.render(stdout, zone == .content);
+                            }
                         },
                         .unhandled => {},
                     }

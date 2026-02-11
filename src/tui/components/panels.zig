@@ -15,7 +15,7 @@ pub const Panel = struct {
         // Top border
         var pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.rect.y, self.rect.x });
         try stdout.writeAll(pos);
-        try stdout.writeAll(Color.teal);
+        try stdout.writeAll(Color.peach);
         try stdout.writeAll(Color.dim);
         try stdout.writeAll("╭");
 
@@ -23,8 +23,10 @@ pub const Panel = struct {
         if (labels[0]) |tl| {
             try stdout.writeAll(" ");
             try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.lavender);
             try stdout.writeAll(tl);
-            try stdout.writeAll(Color.teal);
+            try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.peach);
             try stdout.writeAll(Color.dim);
             try stdout.writeAll(" ");
         }
@@ -41,8 +43,10 @@ pub const Panel = struct {
         if (labels[1]) |tr| {
             try stdout.writeAll(" ");
             try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.lavender);
             try stdout.writeAll(tr);
-            try stdout.writeAll(Color.teal);
+            try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.peach);
             try stdout.writeAll(Color.dim);
             try stdout.writeAll(" ");
         }
@@ -54,18 +58,26 @@ pub const Panel = struct {
         while (row < self.rect.height - 1) : (row += 1) {
             pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.rect.y + row, self.rect.x });
             try stdout.writeAll(pos);
+            try stdout.writeAll(Color.peach);
+            try stdout.writeAll(Color.dim);
             try stdout.writeAll("│");
+            try stdout.writeAll(Color.reset);
             var col: u16 = 1;
             while (col < self.rect.width - 1) : (col += 1) {
                 try stdout.writeAll(" ");
             }
+            try stdout.writeAll(Color.peach);
+            try stdout.writeAll(Color.dim);
             try stdout.writeAll("│");
+            try stdout.writeAll(Color.reset);
         }
 
         // Bottom border
         pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.rect.y +
             self.rect.height - 1, self.rect.x });
         try stdout.writeAll(pos);
+        try stdout.writeAll(Color.peach);
+        try stdout.writeAll(Color.dim);
         try stdout.writeAll("╰");
 
         // Bottom left label
@@ -75,8 +87,10 @@ pub const Panel = struct {
         if (labels[3]) |bl| {
             try stdout.writeAll(" ");
             try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.lavender);
             try stdout.writeAll(bl);
-            try stdout.writeAll(Color.teal);
+            try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.peach);
             try stdout.writeAll(Color.dim);
             try stdout.writeAll(" ");
         }
@@ -90,8 +104,10 @@ pub const Panel = struct {
         if (labels[2]) |br| {
             try stdout.writeAll(" ");
             try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.lavender);
             try stdout.writeAll(br);
-            try stdout.writeAll(Color.teal);
+            try stdout.writeAll(Color.reset);
+            try stdout.writeAll(Color.peach);
             try stdout.writeAll(Color.dim);
             try stdout.writeAll(" ");
         }

@@ -58,15 +58,28 @@ pub const Lock = struct {
         if (self.firmware_version.len > 0) self.alloc.free(self.firmware_version);
     }
 
-    pub fn update(self: *Lock, json: std.json.ObjectMap) void {
+    pub fn update(self: *Lock, json: std.json.ObjectMap) bool {
+        var changed = false;
         if (json.get("state")) |v| {
-            self.state = if (std.mem.eql(u8, v.string, "locked")) .locked else .unlocked;
+            const new_state: @TypeOf(self.state) = if (std.mem.eql(u8, v.string, "locked")) .locked else .unlocked;
+            if (self.state != new_state) {
+                self.state = new_state;
+                changed = true;
+            }
         }
         if (json.get("mode")) |v| {
-            self.mode = if (std.mem.eql(u8, v.string, "holdOpen")) .holdOpen else if (std.mem.eql(u8, v.string, "lockdown")) .lockdown else .autoLock;
+            const new_mode: Mode = if (std.mem.eql(u8, v.string, "holdOpen")) .holdOpen else if (std.mem.eql(u8, v.string, "lockdown")) .lockdown else .autoLock;
+            if (self.mode != new_mode) {
+                self.mode = new_mode;
+                changed = true;
+            }
         }
         if (json.get("offline")) |v| {
-            self.offline = v.bool;
+            if (self.offline != v.bool) {
+                self.offline = v.bool;
+                changed = true;
+            }
         }
+        return changed;
     }
 };

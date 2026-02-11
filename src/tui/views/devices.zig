@@ -47,10 +47,12 @@ pub const DevicesView = struct {
     column_widths: [columns.len]u8,
     config: Config,
     detail: DetailView = .none,
+    cols: u16,
+    rows: u16,
 
     const Self = @This();
 
-    pub fn init(cfg: Config, area: Rect, state: *AppState, buf: [][]const u8) Self {
+    pub fn init(cfg: Config, area: Rect, state: *AppState, buf: [][]const u8, cols: u16, rows: u16) Self {
         const column_widths = computeColumnWidths(state);
         const row_count: u8 = @intCast(state.devices.items.len);
 
@@ -63,6 +65,8 @@ pub const DevicesView = struct {
             .selected_len = 0,
             .column_widths = column_widths,
             .config = cfg,
+            .cols = cols,
+            .rows = rows,
         };
     }
 
@@ -108,7 +112,7 @@ pub const DevicesView = struct {
         var pos_buf: [16]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 2 });
         try stdout.writeAll(pos);
-        try stdout.writeAll(Color.dim);
+        try stdout.writeAll(Color.subtext1);
 
         for (columns, 0..) |col, idx| {
             var buf: [16]u8 = undefined;
@@ -160,7 +164,7 @@ pub const DevicesView = struct {
         const is_focused = idx == self.cursor;
         const indicator_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, self.area.x });
         try stdout.writeAll(indicator_pos);
-        try stdout.writeAll(Color.teal);
+        try stdout.writeAll(Color.peach);
         if (self.has_focus and is_focused and !self.detail_focus) {
             try stdout.writeAll("┃");
         } else {
@@ -191,9 +195,10 @@ pub const DevicesView = struct {
             var data_len = val.len;
             if (data_len == 0) data_len = 1;
 
-            if (col_idx % 2 != 0) {
-                try stdout.writeAll(Color.teal);
-                try stdout.writeAll(Color.dim);
+            if (col_idx == 5) {
+                try stdout.writeAll(Color.green);
+            } else if (col_idx % 2 != 0) {
+                try stdout.writeAll(Color.subtext0);
             }
 
             const data = if (val.data.len == 0) "-" else val.data;
@@ -220,7 +225,7 @@ pub const DevicesView = struct {
         const yPos = self.area.y + idx + 2;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, self.area.x });
         try stdout.writeAll(pos);
-        try stdout.writeAll(Color.teal);
+        try stdout.writeAll(Color.peach);
         if (is_focused) {
             try stdout.writeAll("┃");
         } else {
@@ -266,6 +271,14 @@ pub const DevicesView = struct {
         }
     }
 
+    pub fn tickSpinner(self: *Self, stdout: std.fs.File) !void {
+        try self.detail.tickSpinner(stdout);
+    }
+
+    pub fn isAnimating(self: *Self) bool {
+        return self.detail.isAnimating();
+    }
+
     pub fn handleKey(self: *Self, stdout: std.fs.File, c: u8) !KeyResult {
         if (self.detail_focus) return try self.handleDetailKey(stdout, c);
 
@@ -291,7 +304,7 @@ pub const DevicesView = struct {
                 const device = self.getFocusedDevice() orelse break :blk .unhandled;
                 const y = self.area.y + self.row_count + 4 + @as(u16, self.selected_len) * 4;
                 const area = Rect{ .x = self.area.x, .y = y, .width = self.area.width, .height = 4 };
-                self.detail = DetailView.init(device, area);
+                self.detail = DetailView.init(device, area, self.cols, self.rows);
                 try self.clearDetail(stdout);
                 try self.renderDetail(stdout);
                 break :blk .unhandled;
@@ -397,9 +410,9 @@ pub const DevicesView = struct {
         return &self.state.devices.items[self.cursor];
     }
 
-    fn renderDeviceDetail(stdout: std.fs.File, device: *Device, x: u16, y: u16, width: u16) !u16 {
+    fn renderDeviceDetail(self: *Self, stdout: std.fs.File, device: *Device, x: u16, y: u16, width: u16) !u16 {
         const area = Rect{ .x = x, .y = y, .width = width, .height = 4 };
-        var detail = DetailView.init(device, area);
+        var detail = DetailView.init(device, area, self.cols, self.rows);
         return try detail.render(stdout, false);
     }
 
@@ -408,7 +421,7 @@ pub const DevicesView = struct {
 
         for (self.selected[0..self.selected_len]) |device_id| {
             const device = self.getDeviceById(device_id) orelse continue;
-            const height = try renderDeviceDetail(stdout, device, self.area.x, y, self.area.width);
+            const height = try self.renderDeviceDetail(stdout, device, self.area.x, y, self.area.width);
             y += height;
         }
 
@@ -417,7 +430,7 @@ pub const DevicesView = struct {
             if (self.detail_focus) {
                 _ = try self.detail.render(stdout, true);
             } else {
-                _ = try renderDeviceDetail(stdout, cursor_device, self.area.x, y, self.area.width);
+                _ = try self.renderDeviceDetail(stdout, cursor_device, self.area.x, y, self.area.width);
             }
         }
     }

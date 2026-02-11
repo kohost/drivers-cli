@@ -45,13 +45,13 @@ pub const LockDetail = struct {
         // Row 1: labels
         const state_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 2 });
         try stdout.writeAll(state_label_pos);
-        try stdout.writeAll(Color.dim);
+        try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("State:");
         try stdout.writeAll(Color.reset);
 
         const mode_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 15 });
         try stdout.writeAll(mode_label_pos);
-        try stdout.writeAll(Color.dim);
+        try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("Mode:");
         try stdout.writeAll(Color.reset);
 
@@ -90,6 +90,7 @@ pub const LockDetail = struct {
                         else => "autoLock",
                     };
                     try self.mode_select.close(stdout);
+                    _ = try self.render(stdout, true);
                     const cmd = try std.fmt.bufPrint(
                         &self.cmd_buf,
                         "UpdateDevices devices=[{{\"id\":\"{s}\",\"mode\":\"{s}\"}}]",
@@ -124,6 +125,15 @@ pub const LockDetail = struct {
                 if (self.cursor > 0) {
                     self.cursor -= 1;
                     _ = try self.render(stdout, true);
+                }
+                break :blk .unhandled;
+            },
+            'j', 'k' => blk: {
+                if (self.cursor == 1) {
+                    self.mode_select.open = true;
+                    self.mode_select.cursor = @intFromEnum(self.lock.mode);
+                    _ = try self.render(stdout, true);
+                    break :blk .unhandled;
                 }
                 break :blk .unhandled;
             },

@@ -25,7 +25,9 @@ pub const Tab = struct {
                 if (focused) {
                     try stdout.writeAll("\x1b[4m"); // Underline
                 }
-                try stdout.writeAll(Color.teal);
+                try stdout.writeAll(Color.mauve);
+            } else {
+                try stdout.writeAll(Color.overlay1);
             }
             try stdout.writeAll(label);
             try stdout.writeAll(Color.reset);
