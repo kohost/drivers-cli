@@ -145,7 +145,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     try view.render(stdout, zone == .content);
 
     // AMQP setup
-    var rx_mem: [4096]u8 = undefined;
+    var rx_mem: [65536]u8 = undefined;
     var tx_mem: [4096]u8 = undefined;
     var amqp_conn = amqp.Connection.init(&rx_mem, &tx_mem);
     const address = std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 5672);
@@ -259,9 +259,11 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                                 notification.show(err_msg);
                                 notification.render(stdout, termSize.cols);
                             }
-                            if (state.update(parsed.value)) {
-                                try view.render(stdout, zone == .content);
-                            }
+                            _ = state.update(parsed.value);
+                            try view.render(stdout, zone == .content);
+                        },
+                        .redraw => {
+                            try view.render(stdout, zone == .content);
                         },
                         .unhandled => {},
                     }

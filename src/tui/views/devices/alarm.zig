@@ -158,6 +158,7 @@ pub const AlarmDetail = struct {
             } else {
                 if (!self.code_input.visible) {
                     try self.code_input.clear(stdout, self.cols, self.rows);
+                    return .redraw;
                 }
                 _ = try self.render(stdout, true);
                 return .unhandled;

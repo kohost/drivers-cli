@@ -1,17 +1,21 @@
 const std = @import("std");
 const Alarm = @import("alarm.zig").Alarm;
 const Lock = @import("lock.zig").Lock;
-// const Dimmer = @import("dimmer.zig").Dimmer;
-// const Thermostat = @import("thermostat.zig").Thermostat;
+const Switch = @import("switch.zig").Switch;
+const Thermostat = @import("thermostat.zig").Thermostat;
 
 pub const Device = union(enum) {
     alarm: Alarm,
     lock: Lock,
+    @"switch": Switch,
+    thermostat: Thermostat,
 
     pub fn id(self: Device) []const u8 {
         return switch (self) {
             .alarm => |a| a.id,
             .lock => |l| l.id,
+            .@"switch" => |s| s.id,
+            .thermostat => |t| t.id,
         };
     }
 
@@ -19,6 +23,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.name,
             .lock => |l| l.name,
+            .@"switch" => |s| s.name,
+            .thermostat => |t| t.name,
         };
     }
 
@@ -26,6 +32,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => "alarm",
             .lock => "lock",
+            .@"switch" => "switch",
+            .thermostat => "thermostat",
         };
     }
 
@@ -33,6 +41,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.offline,
             .lock => |l| l.offline,
+            .@"switch" => |s| s.offline,
+            .thermostat => |t| t.offline,
         };
     }
 
@@ -40,6 +50,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.manufacturer,
             .lock => |l| l.manufacturer,
+            .@"switch" => |s| s.manufacturer,
+            .thermostat => |t| t.manufacturer,
         };
     }
 
@@ -47,6 +59,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.model_number,
             .lock => |l| l.model_number,
+            .@"switch" => |s| s.model_number,
+            .thermostat => |t| t.model_number,
         };
     }
 
@@ -54,6 +68,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.serial_number,
             .lock => |l| l.serial_number,
+            .@"switch" => |s| s.serial_number,
+            .thermostat => |t| t.serial_number,
         };
     }
 
@@ -61,6 +77,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.firmware_version,
             .lock => |l| l.firmware_version,
+            .@"switch" => |s| s.firmware_version,
+            .thermostat => |t| t.firmware_version,
         };
     }
 
@@ -68,6 +86,8 @@ pub const Device = union(enum) {
         return switch (self) {
             .alarm => |a| a.watts,
             .lock => |l| l.watts,
+            .@"switch" => |s| s.watts,
+            .thermostat => |t| t.watts,
         };
     }
 
@@ -80,6 +100,12 @@ pub const Device = union(enum) {
         if (std.mem.eql(u8, device_type, "lock")) {
             return .{ .lock = Lock.fromJson(alloc, obj) };
         }
+        if (std.mem.eql(u8, device_type, "switch")) {
+            return .{ .@"switch" = Switch.fromJson(alloc, obj) };
+        }
+        if (std.mem.eql(u8, device_type, "thermostat")) {
+            return .{ .thermostat = Thermostat.fromJson(alloc, obj) };
+        }
 
         return null;
     }
@@ -88,6 +114,8 @@ pub const Device = union(enum) {
         switch (self.*) {
             .alarm => |*a| a.deinit(),
             .lock => |*l| l.deinit(),
+            .@"switch" => |*s| s.deinit(),
+            .thermostat => |*t| t.deinit(),
         }
     }
 
@@ -95,6 +123,8 @@ pub const Device = union(enum) {
         return switch (self.*) {
             .alarm => |*a| a.update(obj),
             .lock => |*l| l.update(obj),
+            .@"switch" => |*s| s.update(obj),
+            .thermostat => |*t| t.update(obj),
         };
     }
 };

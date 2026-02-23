@@ -11,6 +11,8 @@ const DetailView = @import("detail_view.zig").DetailView;
 const emoji_map = std.StaticStringMap([]const u8).initComptime(.{
     .{ "alarm", "🚨" },
     .{ "dimmer", "💡" },
+    .{ "light", "💡" },
+    .{ "switch", "🕹️" },
     .{ "lock", "🔒" },
     .{ "mediaSource", "📺" },
     .{ "thermostat", "🌡️" },
@@ -38,6 +40,8 @@ pub const DevicesView = struct {
     cursor: u8,
     area: Rect,
     row_count: u8,
+    visible_rows: u8,
+    scroll_offset: u8 = 0,
     has_focus: bool = false,
     detail_focus: bool = false,
     last_key_timestamp: i64 = 0,
@@ -55,12 +59,16 @@ pub const DevicesView = struct {
     pub fn init(cfg: Config, area: Rect, state: *AppState, buf: [][]const u8, cols: u16, rows: u16) Self {
         const column_widths = computeColumnWidths(state);
         const row_count: u8 = @intCast(state.devices.items.len);
+        const available: u16 = rows - area.y;
+        const max_rows: u8 = @intCast(@max(available * 3 / 4, 4) - 3);
+        const visible_rows: u8 = @min(row_count, max_rows);
 
         return .{
             .state = state,
             .cursor = 0,
             .area = area,
             .row_count = row_count,
+            .visible_rows = visible_rows,
             .selected = buf,
             .selected_len = 0,
             .column_widths = column_widths,
@@ -73,7 +81,7 @@ pub const DevicesView = struct {
     pub fn render(self: *Self, stdout: std.fs.File, has_focus: bool) !void {
         self.has_focus = has_focus;
 
-        var panel = Panel.init(self.area.x, self.area.y, self.area.width, self.row_count + 3);
+        var panel = Panel.init(self.area.x, self.area.y, self.area.width, self.visible_rows + 3);
         var port_buf: [32]u8 = undefined;
         const port_str = try std.fmt.bufPrint(&port_buf, "{s}:{d}", .{ self.config.host, self.config.port });
         const manufacturer: ?[]const u8 = if (self.state.system) |sys| sys.manufacturer else null;
@@ -133,21 +141,22 @@ pub const DevicesView = struct {
     }
 
     fn writeRows(self: *Self, stdout: std.fs.File) !void {
-        for (self.state.devices.items, 0..) |_, idx| {
-            try self.writeRow(stdout, @intCast(idx));
+        var i: u8 = 0;
+        while (i < self.visible_rows) : (i += 1) {
+            try self.writeRow(stdout, self.scroll_offset + i, i);
         }
     }
 
-    fn writeRow(self: *Self, stdout: std.fs.File, idx: u8) !void {
+    fn writeRow(self: *Self, stdout: std.fs.File, data_idx: u8, display_idx: u8) !void {
         var pos_buf: [16]u8 = undefined;
         var int_buf: [8]u8 = undefined;
         const Y_PAD: u8 = 2;
-        const yPos = self.area.y + idx + Y_PAD;
+        const yPos = self.area.y + display_idx + Y_PAD;
 
         const row_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, self.area.x + 1 });
         try stdout.writeAll(row_pos);
 
-        const device = self.state.devices.items[idx];
+        const device = self.state.devices.items[data_idx];
         const id = device.id();
         const is_selected = self.isSelected(id);
 
@@ -161,7 +170,7 @@ pub const DevicesView = struct {
         }
         try stdout.writeAll(Color.reset);
 
-        const is_focused = idx == self.cursor;
+        const is_focused = data_idx == self.cursor;
         const indicator_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, self.area.x });
         try stdout.writeAll(indicator_pos);
         try stdout.writeAll(Color.peach);
@@ -185,7 +194,7 @@ pub const DevicesView = struct {
             .{ .data = device.name(), .len = @intCast(device.name().len) },
             .{ .data = device.modelNumber(), .len = @intCast(device.modelNumber().len) },
             .{ .data = device.serialNumber(), .len = @intCast(device.serialNumber().len) },
-            .{ .data = if (device.offline()) "𝑥" else "✓", .len = 1 },
+            .{ .data = if (device.offline()) "✘" else "✓", .len = 1 },
             .{ .data = std.fmt.bufPrint(&int_buf, "{d}", .{device.watts()}) catch "0", .len = @intCast((std.fmt.bufPrint(&int_buf, "{d}", .{device.watts()}) catch "0").len) },
             .{ .data = device.firmwareVersion(), .len = @intCast(device.firmwareVersion().len) },
         };
@@ -196,7 +205,7 @@ pub const DevicesView = struct {
             if (data_len == 0) data_len = 1;
 
             if (col_idx == 5) {
-                try stdout.writeAll(Color.green);
+                try stdout.writeAll(if (device.offline()) Color.red else Color.green);
             } else if (col_idx % 2 != 0) {
                 try stdout.writeAll(Color.subtext0);
             }
@@ -221,8 +230,9 @@ pub const DevicesView = struct {
     }
 
     fn updateFocus(self: *Self, stdout: std.fs.File, idx: u8, is_focused: bool) !void {
+        if (idx < self.scroll_offset or idx >= self.scroll_offset + self.visible_rows) return;
         var pos_buf: [16]u8 = undefined;
-        const yPos = self.area.y + idx + 2;
+        const yPos = self.area.y + (idx - self.scroll_offset) + 2;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ yPos, self.area.x });
         try stdout.writeAll(pos);
         try stdout.writeAll(Color.peach);
@@ -233,6 +243,14 @@ pub const DevicesView = struct {
             try stdout.writeAll("│");
         }
         try stdout.writeAll(Color.reset);
+    }
+
+    fn scrollToCursor(self: *Self) void {
+        if (self.cursor < self.scroll_offset) {
+            self.scroll_offset = self.cursor;
+        } else if (self.cursor >= self.scroll_offset + self.visible_rows) {
+            self.scroll_offset = self.cursor - self.visible_rows + 1;
+        }
     }
 
     fn isSelected(self: *Self, id: []const u8) bool {
@@ -253,7 +271,9 @@ pub const DevicesView = struct {
 
         self.selected[self.selected_len] = id;
         self.selected_len += 1;
-        try self.writeRow(stdout, self.cursor);
+        if (self.cursor >= self.scroll_offset and self.cursor < self.scroll_offset + self.visible_rows) {
+            try self.writeRow(stdout, self.cursor, self.cursor - self.scroll_offset);
+        }
     }
 
     fn deselectItem(self: *Self, stdout: std.fs.File) !void {
@@ -265,7 +285,9 @@ pub const DevicesView = struct {
             if (std.mem.eql(u8, sel_id, id)) {
                 self.selected[i] = self.selected[self.selected_len - 1];
                 self.selected_len -= 1;
-                try self.writeRow(stdout, self.cursor);
+                if (self.cursor >= self.scroll_offset and self.cursor < self.scroll_offset + self.visible_rows) {
+                    try self.writeRow(stdout, self.cursor, self.cursor - self.scroll_offset);
+                }
                 return;
             }
         }
@@ -302,7 +324,7 @@ pub const DevicesView = struct {
                 self.detail_focus = true;
                 try self.updateFocus(stdout, self.cursor, false);
                 const device = self.getFocusedDevice() orelse break :blk .unhandled;
-                const y = self.area.y + self.row_count + 4 + @as(u16, self.selected_len) * 4;
+                const y = self.area.y + self.visible_rows + 4 + @as(u16, self.selected_len) * 4;
                 const area = Rect{ .x = self.area.x, .y = y, .width = self.area.width, .height = 4 };
                 self.detail = DetailView.init(device, area, self.cols, self.rows);
                 try self.clearDetail(stdout);
@@ -312,9 +334,9 @@ pub const DevicesView = struct {
             'g' => blk: {
                 if (prev_key == 'g') {
                     old = self.cursor;
-                    try self.updateFocus(stdout, old, false);
                     self.cursor = 0;
-                    try self.updateFocus(stdout, self.cursor, true);
+                    self.scrollToCursor();
+                    try self.render(stdout, self.has_focus);
                     self.last_key = 0;
                 }
                 break :blk .unhandled;
@@ -327,17 +349,27 @@ pub const DevicesView = struct {
             },
             'j' => blk: {
                 old = self.cursor;
-                try self.updateFocus(stdout, old, false);
                 self.cursor = @min(old + step, self.row_count - 1);
-                try self.updateFocus(stdout, self.cursor, true);
+                if (self.cursor >= self.scroll_offset + self.visible_rows) {
+                    self.scroll_offset = self.cursor - self.visible_rows + 1;
+                    try self.render(stdout, self.has_focus);
+                } else {
+                    try self.updateFocus(stdout, old, false);
+                    try self.updateFocus(stdout, self.cursor, true);
+                }
                 break :blk .unhandled;
             },
             'k' => blk: {
                 if (self.cursor > 0) {
                     old = self.cursor;
-                    try self.updateFocus(stdout, old, false);
                     self.cursor = if (step > old) 0 else old - step;
-                    try self.updateFocus(stdout, self.cursor, true);
+                    if (self.cursor < self.scroll_offset) {
+                        self.scroll_offset = self.cursor;
+                        try self.render(stdout, self.has_focus);
+                    } else {
+                        try self.updateFocus(stdout, old, false);
+                        try self.updateFocus(stdout, self.cursor, true);
+                    }
                     break :blk .unhandled;
                 }
                 break :blk .{ .move_to = .up };
@@ -349,31 +381,31 @@ pub const DevicesView = struct {
             },
             'G' => blk: {
                 old = self.cursor;
-                try self.updateFocus(stdout, old, false);
                 self.cursor = self.row_count - 1;
-                try self.updateFocus(stdout, self.cursor, true);
+                self.scrollToCursor();
+                try self.render(stdout, self.has_focus);
                 break :blk .unhandled;
             },
             'H' => blk: {
                 old = self.cursor;
-                try self.updateFocus(stdout, old, false);
                 self.cursor = 0;
-                try self.updateFocus(stdout, self.cursor, true);
+                self.scrollToCursor();
+                try self.render(stdout, self.has_focus);
                 self.last_key = 0;
                 break :blk .unhandled;
             },
             'L' => blk: {
                 old = self.cursor;
-                try self.updateFocus(stdout, old, false);
                 self.cursor = self.row_count - 1;
-                try self.updateFocus(stdout, self.cursor, true);
+                self.scrollToCursor();
+                try self.render(stdout, self.has_focus);
                 break :blk .unhandled;
             },
             'M' => blk: {
                 old = self.cursor;
-                try self.updateFocus(stdout, old, false);
                 self.cursor = self.row_count / 2;
-                try self.updateFocus(stdout, self.cursor, true);
+                self.scrollToCursor();
+                try self.render(stdout, self.has_focus);
                 break :blk .unhandled;
             },
             else => .unhandled,
@@ -417,7 +449,7 @@ pub const DevicesView = struct {
     }
 
     fn renderDetail(self: *Self, stdout: std.fs.File) !void {
-        var y = self.area.y + self.row_count + 4;
+        var y = self.area.y + self.visible_rows + 4;
 
         for (self.selected[0..self.selected_len]) |device_id| {
             const device = self.getDeviceById(device_id) orelse continue;
@@ -437,7 +469,7 @@ pub const DevicesView = struct {
 
     fn clearDetail(self: *Self, stdout: std.fs.File) !void {
         var pos_buf: [32]u8 = undefined;
-        const detail_y = self.area.y + self.row_count + 4;
+        const detail_y = self.area.y + self.visible_rows + 4;
         const total_rows: u16 = (@as(u16, self.selected_len) + 1) * 4;
         var row: u16 = 0;
         while (row < total_rows) : (row += 1) {

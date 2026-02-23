@@ -2,7 +2,7 @@ const std = @import("std");
 const Color = @import("../color.zig");
 
 pub const Notification = struct {
-    message: [128]u8 = undefined,
+    message: [256]u8 = undefined,
     msg_len: u8 = 0,
     timestamp: i64 = 0,
     visible: bool = false,
@@ -10,7 +10,6 @@ pub const Notification = struct {
 
     const hold_ms: i64 = 4000;
     const slide_ms: i64 = 300;
-    const max_width: u16 = 40;
     const padding: u16 = 2;
     const border_overhead: u16 = 2;
 
@@ -42,9 +41,7 @@ pub const Notification = struct {
     }
 
     fn boxWidth(self: *Notification) u16 {
-        const msg = self.message[0..self.msg_len];
-        const content_width: u16 = @intCast(@min(msg.len + padding * 2, max_width));
-        return content_width + border_overhead;
+        return @as(u16, self.msg_len) + padding * 2 + border_overhead;
     }
 
     fn baseX(self: *Notification, cols: u16) u16 {
@@ -95,8 +92,7 @@ pub const Notification = struct {
         const x = self.baseX(cols) + self.slide_offset;
         if (x >= cols) return;
         const msg = self.message[0..self.msg_len];
-        const content_width: u16 = @intCast(@min(msg.len + padding * 2, max_width));
-        const bw = content_width + border_overhead;
+        const bw = self.boxWidth();
         const visible_w: u16 = @min(bw, cols - x);
         const y: u16 = 2;
 
@@ -129,9 +125,7 @@ pub const Notification = struct {
             stdout.writeAll(" ") catch return;
         }
 
-        const text_space = content_width -| padding * 2;
-        const display_len: u16 = @intCast(@min(msg.len, text_space));
-        const text_visible = @min(display_len, inner_w -| padding);
+        const text_visible = @min(@as(u16, self.msg_len), inner_w -| padding);
         stdout.writeAll(color) catch return;
         stdout.writeAll(msg[0..text_visible]) catch return;
         stdout.writeAll(Color.reset) catch return;
