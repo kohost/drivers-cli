@@ -12,7 +12,7 @@ const HvacState = Thermostat.HvacState;
 const FanMode = Thermostat.FanMode;
 const FanState = Thermostat.FanState;
 
-const hvac_state_labels = [_][]const u8{ "Cooling", "Heating", "Off" };
+const hvac_state_labels = [_][]const u8{ "❄️", "🔥", "Off" };
 const fan_state_labels = [_][]const u8{ "Off", "On", "Low", "Medium", "High" };
 
 const hvac_labels = [_][]const u8{ "Off", "Heat", "Cool", "Auto" };
@@ -75,16 +75,24 @@ pub const ThermostatDetail = struct {
         };
     }
 
+    fn isAutoDualMode(self: *ThermostatDetail) bool {
+        return self.thermostat.hvac_mode == .auto and
+            self.thermostat.setpoints.auto == null and
+            self.thermostat.setpoints.cool != null and
+            self.thermostat.setpoints.heat != null;
+    }
+
     fn setpointKey(self: *ThermostatDetail) []const u8 {
         return switch (self.thermostat.hvac_mode) {
             .cool => "cool",
             .heat => "heat",
-            .auto => "auto",
+            .auto => if (self.thermostat.setpoints.auto != null) "auto" else "heat",
             .off => "",
         };
     }
 
     pub fn render(self: *ThermostatDetail, stdout: std.fs.File, focused: bool) !u16 {
+        const dual_mode = self.isAutoDualMode();
         const height: u16 = 4;
         var panel = Panel.init(self.area.x, self.area.y, self.area.width, height);
         try panel.draw(stdout, .{ self.thermostat.name, self.thermostat.id, null, null });
@@ -99,58 +107,103 @@ pub const ThermostatDetail = struct {
         try stdout.writeAll("Current:");
         try stdout.writeAll(Color.reset);
 
-        const sp_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 11 });
-        try stdout.writeAll(sp_label_pos);
-        try stdout.writeAll(Color.subtext0);
-        try stdout.writeAll("Setpoint:");
-        try stdout.writeAll(Color.reset);
+        if (dual_mode) {
+            // Dual mode labels: CSP CMin CMax HSP HMin HMax
+            const csp_lbl = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 11 });
+            try stdout.writeAll(csp_lbl);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("CSP:");
+            try stdout.writeAll(Color.reset);
 
-        const min_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 21 });
-        try stdout.writeAll(min_label_pos);
-        try stdout.writeAll(Color.subtext0);
-        try stdout.writeAll("Min:");
-        try stdout.writeAll(Color.reset);
+            const cmin_lbl = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 18 });
+            try stdout.writeAll(cmin_lbl);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("CMin:");
+            try stdout.writeAll(Color.reset);
 
-        const max_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 26 });
-        try stdout.writeAll(max_label_pos);
-        try stdout.writeAll(Color.subtext0);
-        try stdout.writeAll("Max:");
-        try stdout.writeAll(Color.reset);
+            const cmax_lbl = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 24 });
+            try stdout.writeAll(cmax_lbl);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("CMax:");
+            try stdout.writeAll(Color.reset);
 
-        const mode_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 31 });
+            const hsp_lbl = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 30 });
+            try stdout.writeAll(hsp_lbl);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("HSP:");
+            try stdout.writeAll(Color.reset);
+
+            const hmin_lbl = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 37 });
+            try stdout.writeAll(hmin_lbl);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("HMin:");
+            try stdout.writeAll(Color.reset);
+
+            const hmax_lbl = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 43 });
+            try stdout.writeAll(hmax_lbl);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("HMax:");
+            try stdout.writeAll(Color.reset);
+        } else {
+            const sp_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 11 });
+            try stdout.writeAll(sp_label_pos);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("Setpoint:");
+            try stdout.writeAll(Color.reset);
+
+            const min_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 21 });
+            try stdout.writeAll(min_label_pos);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("Min:");
+            try stdout.writeAll(Color.reset);
+
+            const max_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 26 });
+            try stdout.writeAll(max_label_pos);
+            try stdout.writeAll(Color.subtext0);
+            try stdout.writeAll("Max:");
+            try stdout.writeAll(Color.reset);
+        }
+
+        const mode_col: u16 = if (dual_mode) 49 else 31;
+        const mode_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + mode_col });
         try stdout.writeAll(mode_label_pos);
         try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("Mode:");
         try stdout.writeAll(Color.reset);
 
-        const state_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 39 });
+        const state_col: u16 = if (dual_mode) 56 else 39;
+        const state_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + state_col });
         try stdout.writeAll(state_label_pos);
         try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("State:");
         try stdout.writeAll(Color.reset);
 
-        const fan_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 48 });
+        const fan_col: u16 = if (dual_mode) 63 else 46;
+        const fan_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + fan_col });
         try stdout.writeAll(fan_label_pos);
         try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("Fan:");
         try stdout.writeAll(Color.reset);
 
-        const fan_state_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 56 });
+        const fan_state_col: u16 = if (dual_mode) 70 else 55;
+        const fan_state_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + fan_state_col });
         try stdout.writeAll(fan_state_label_pos);
         try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("FanState:");
         try stdout.writeAll(Color.reset);
 
-        const delta_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 66 });
+        const delta_col: u16 = if (dual_mode) 80 else 65;
+        const delta_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + delta_col });
         try stdout.writeAll(delta_label_pos);
         try stdout.writeAll(Color.subtext0);
         try stdout.writeAll("Delta:");
         try stdout.writeAll(Color.reset);
 
-        const ui_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 73 });
+        const ui_col: u16 = if (dual_mode) 87 else 72;
+        const ui_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + ui_col });
         try stdout.writeAll(ui_label_pos);
         try stdout.writeAll(Color.subtext0);
-        try stdout.writeAll("UIEnabled:");
+        try stdout.writeAll("UI:");
         try stdout.writeAll(Color.reset);
 
         // Row 2: current temp (right-aligned under "Current:")
@@ -161,52 +214,133 @@ pub const ThermostatDetail = struct {
         try stdout.writeAll(temp_val_pos);
         try stdout.writeAll(temp_str);
 
-        // Row 2: min (right-aligned under "Min:")
+        // Row 2: setpoint, min, max values
         const active_sp = self.getActiveSetpoint();
-        const min_focused = focused and self.cursor == 1;
-        if (active_sp) |sp| {
-            const min_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{sp.min});
-            const min_display_len: u16 = @intCast(min_str.len - 1);
-            const min_x = self.area.x + 21 + 4 - min_display_len;
-            const min_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, min_x });
-            try stdout.writeAll(min_val_pos);
+
+        if (dual_mode) {
+            const cool_sp = self.thermostat.setpoints.cool.?;
+            const heat_sp = self.thermostat.setpoints.heat.?;
+
+            // Cool setpoint value (under CSP: at x+11)
+            const cool_sp_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 11 });
+            try stdout.writeAll(cool_sp_pos);
+            const cool_sp_str = try std.fmt.bufPrint(&temp_buf, "{d:.1}\xc2\xb0", .{cool_sp.value});
+            try stdout.writeAll(cool_sp_str);
+
+            // Cool min value (right-justified under CMin: at x+18, 5 chars wide)
+            const cool_min_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{cool_sp.min});
+            const cool_min_dlen: u16 = @intCast(cool_min_str.len - 1);
+            const cool_min_x = self.area.x + 18 + 5 - cool_min_dlen;
+            const cool_min_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, cool_min_x });
+            try stdout.writeAll(cool_min_pos);
+            try stdout.writeAll(cool_min_str);
+
+            // Cool max value (under CMax: at x+24)
+            const cool_max_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 24 });
+            try stdout.writeAll(cool_max_pos);
+            const cool_max_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{cool_sp.max});
+            try stdout.writeAll(cool_max_str);
+
+            // Heat setpoint value (under HSP: at x+30)
+            const sp_focused = focused and self.cursor == 0;
+            const heat_sp_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 30 });
+            try stdout.writeAll(heat_sp_pos);
+            if (sp_focused) {
+                try stdout.writeAll("\x1b[4m");
+                try stdout.writeAll(Color.underline_peach);
+            }
+            const heat_sp_str = try std.fmt.bufPrint(&temp_buf, "{d:.1}\xc2\xb0", .{heat_sp.value});
+            try stdout.writeAll(heat_sp_str);
+            if (sp_focused) try stdout.writeAll(Color.reset);
+
+            // Heat min value (right-justified under HMin: at x+37, 5 chars wide)
+            const min_focused = focused and self.cursor == 1;
+            const heat_min_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{heat_sp.min});
+            const heat_min_dlen: u16 = @intCast(heat_min_str.len - 1);
+            const heat_min_x = self.area.x + 37 + 5 - heat_min_dlen;
+            const heat_min_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, heat_min_x });
+            try stdout.writeAll(heat_min_pos);
             if (min_focused) {
                 try stdout.writeAll("\x1b[4m");
                 try stdout.writeAll(Color.underline_peach);
             }
-            try stdout.writeAll(min_str);
+            try stdout.writeAll(heat_min_str);
             if (min_focused) try stdout.writeAll(Color.reset);
-        } else {
-            const min_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 23 });
-            try stdout.writeAll(min_val_pos);
-            try stdout.writeAll("--");
-        }
 
-        // Row 2: max
-        const max_focused = focused and self.cursor == 2;
-        const max_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 26 });
-        try stdout.writeAll(max_val_pos);
-        if (active_sp) |sp| {
+            // Heat max value (under HMax: at x+43)
+            const max_focused = focused and self.cursor == 2;
+            const heat_max_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 43 });
+            try stdout.writeAll(heat_max_pos);
             if (max_focused) {
                 try stdout.writeAll("\x1b[4m");
                 try stdout.writeAll(Color.underline_peach);
             }
-            const max_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{sp.max});
-            try stdout.writeAll(max_str);
+            const heat_max_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{heat_sp.max});
+            try stdout.writeAll(heat_max_str);
             if (max_focused) try stdout.writeAll(Color.reset);
         } else {
-            try stdout.writeAll("--");
+            // Single setpoint mode
+            const sp_focused = focused and self.cursor == 0;
+            const sp_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 11 });
+            try stdout.writeAll(sp_val_pos);
+            if (active_sp) |sp| {
+                if (sp_focused) {
+                    try stdout.writeAll("\x1b[4m");
+                    try stdout.writeAll(Color.underline_peach);
+                }
+                const sp_str = try std.fmt.bufPrint(&temp_buf, "{d:.1}\xc2\xb0", .{sp.value});
+                try stdout.writeAll(sp_str);
+                if (sp_focused) try stdout.writeAll(Color.reset);
+            } else {
+                try stdout.writeAll("--");
+            }
+
+            // Min
+            const min_focused = focused and self.cursor == 1;
+            if (active_sp) |sp| {
+                const min_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{sp.min});
+                const min_display_len: u16 = @intCast(min_str.len - 1);
+                const min_x = self.area.x + 21 + 4 - min_display_len;
+                const min_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, min_x });
+                try stdout.writeAll(min_val_pos);
+                if (min_focused) {
+                    try stdout.writeAll("\x1b[4m");
+                    try stdout.writeAll(Color.underline_peach);
+                }
+                try stdout.writeAll(min_str);
+                if (min_focused) try stdout.writeAll(Color.reset);
+            } else {
+                const min_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 23 });
+                try stdout.writeAll(min_val_pos);
+                try stdout.writeAll("--");
+            }
+
+            // Max
+            const max_focused = focused and self.cursor == 2;
+            const max_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 26 });
+            try stdout.writeAll(max_pos);
+            if (active_sp) |sp| {
+                if (max_focused) {
+                    try stdout.writeAll("\x1b[4m");
+                    try stdout.writeAll(Color.underline_peach);
+                }
+                const max_str = try std.fmt.bufPrint(&temp_buf, "{d:.0}\xc2\xb0", .{sp.max});
+                try stdout.writeAll(max_str);
+                if (max_focused) try stdout.writeAll(Color.reset);
+            } else {
+                try stdout.writeAll("--");
+            }
         }
 
         // Row 2: controls
-        self.hvac_mode_select.x = self.area.x + 31;
+        self.hvac_mode_select.x = self.area.x + mode_col;
         self.hvac_mode_select.y = self.area.y + 2;
         self.hvac_mode_select.labels = self.hvac_label_buf[0..self.hvac_label_count];
         const hvac_idx = findModeIndex(HvacMode, self.thermostat.supported_hvac_modes, self.thermostat.hvac_mode);
         try self.hvac_mode_select.render(stdout, hvac_idx, focused and self.cursor == 3);
 
         // Row 2: hvac state
-        const hvac_state_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 39 });
+        const hvac_state_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + state_col });
         try stdout.writeAll(hvac_state_pos);
         if (self.thermostat.hvac_state) |hs| {
             try stdout.writeAll(hvac_state_labels[@intFromEnum(hs)]);
@@ -214,14 +348,14 @@ pub const ThermostatDetail = struct {
             try stdout.writeAll("--");
         }
 
-        self.fan_mode_select.x = self.area.x + 48;
+        self.fan_mode_select.x = self.area.x + fan_col;
         self.fan_mode_select.y = self.area.y + 2;
         self.fan_mode_select.labels = self.fan_label_buf[0..self.fan_label_count];
         const fan_idx = findModeIndex(FanMode, self.thermostat.supported_fan_modes, self.thermostat.fan_mode);
         try self.fan_mode_select.render(stdout, fan_idx, focused and self.cursor == 4);
 
         // Row 2: fan state
-        const fan_state_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 56 });
+        const fan_state_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + fan_state_col });
         try stdout.writeAll(fan_state_pos);
         if (self.thermostat.fan_state) |fs| {
             try stdout.writeAll(fan_state_labels[@intFromEnum(fs)]);
@@ -230,7 +364,7 @@ pub const ThermostatDetail = struct {
         }
 
         // Row 2: delta
-        const delta_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 66 });
+        const delta_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + delta_col });
         try stdout.writeAll(delta_pos);
         if (self.thermostat.min_auto_delta) |d| {
             const delta_str = try std.fmt.bufPrint(&temp_buf, "{d}", .{d});
@@ -240,7 +374,7 @@ pub const ThermostatDetail = struct {
         }
 
         // Row 2: ui enabled
-        const ui_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 73 });
+        const ui_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + ui_col });
         try stdout.writeAll(ui_pos);
         if (self.thermostat.ui_enabled) {
             try stdout.writeAll(Color.green);
@@ -250,22 +384,6 @@ pub const ThermostatDetail = struct {
             try stdout.writeAll("✘");
         }
         try stdout.writeAll(Color.reset);
-
-        // Row 2: setpoint value (left-aligned at x+11)
-        const sp_val_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 2, self.area.x + 11 });
-        try stdout.writeAll(sp_val_pos);
-        const sp_focused = focused and self.cursor == 0;
-        if (active_sp) |sp| {
-            if (sp_focused) {
-                try stdout.writeAll("\x1b[4m");
-                try stdout.writeAll(Color.underline_peach);
-            }
-            const sp_str = try std.fmt.bufPrint(&temp_buf, "{d:.1}\xc2\xb0", .{sp.value});
-            try stdout.writeAll(sp_str);
-            if (sp_focused) try stdout.writeAll(Color.reset);
-        } else {
-            try stdout.writeAll("--");
-        }
 
         try self.sp_popup.render(stdout, self.cols, self.rows);
 
@@ -299,24 +417,25 @@ pub const ThermostatDetail = struct {
                 break :blk .unhandled;
             },
             'j', 'k', '\r', '\n' => blk: {
+                const has_sp = self.getActiveSetpoint() != null or self.isAutoDualMode();
                 if (self.cursor == 0) {
-                    if (self.getActiveSetpoint() != null) {
+                    if (has_sp) {
                         self.sp_field = .value;
-                        self.sp_popup.title = "Set Temperature";
+                        self.sp_popup.title = if (self.isAutoDualMode()) "Set Heat Setpoint" else "Set Temperature";
                         self.sp_popup.show();
                         _ = try self.render(stdout, true);
                     }
                 } else if (self.cursor == 1) {
-                    if (self.getActiveSetpoint() != null) {
+                    if (has_sp) {
                         self.sp_field = .min;
-                        self.sp_popup.title = "Set Min";
+                        self.sp_popup.title = if (self.isAutoDualMode()) "Set Heat Min" else "Set Min";
                         self.sp_popup.show();
                         _ = try self.render(stdout, true);
                     }
                 } else if (self.cursor == 2) {
-                    if (self.getActiveSetpoint() != null) {
+                    if (has_sp) {
                         self.sp_field = .max;
-                        self.sp_popup.title = "Set Max";
+                        self.sp_popup.title = if (self.isAutoDualMode()) "Set Heat Max" else "Set Max";
                         self.sp_popup.show();
                         _ = try self.render(stdout, true);
                     }
