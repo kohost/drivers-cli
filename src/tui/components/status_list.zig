@@ -124,23 +124,22 @@ pub const StatusList = struct {
         const w = stream.writer();
         var first = true;
 
-        if (secure > 0) {
+        if (open_count == 0 and bypassed == 0 and offline == 0) {
             w.print("{d} secure", .{secure}) catch {};
-            first = false;
-        }
-        if (open_count > 0) {
-            if (!first) w.writeAll(", ") catch {};
-            w.print("{d} open", .{open_count}) catch {};
-            first = false;
-        }
-        if (bypassed > 0) {
-            if (!first) w.writeAll(", ") catch {};
-            w.print("{d} bypassed", .{bypassed}) catch {};
-            first = false;
-        }
-        if (offline > 0) {
-            if (!first) w.writeAll(", ") catch {};
-            w.print("{d} offline", .{offline}) catch {};
+        } else {
+            if (open_count > 0) {
+                w.print("{d} open", .{open_count}) catch {};
+                first = false;
+            }
+            if (bypassed > 0) {
+                if (!first) w.writeAll(", ") catch {};
+                w.print("{d} bypassed", .{bypassed}) catch {};
+                first = false;
+            }
+            if (offline > 0) {
+                if (!first) w.writeAll(", ") catch {};
+                w.print("{d} offline", .{offline}) catch {};
+            }
         }
 
         return stream.getWritten();

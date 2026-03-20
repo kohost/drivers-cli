@@ -29,7 +29,7 @@ pub const Thermostat = struct {
     watts: u16,
     alerts: []const Alert,
     offline: bool,
-    ui_enabled: bool,
+    ui_enabled: ?bool,
 
     pub const Setpoints = struct {
         cool: ?Setpoint = null,
@@ -89,7 +89,7 @@ pub const Thermostat = struct {
             .watts = if (obj.get("watts")) |v| @intCast(v.integer) else 0,
             .alerts = &.{}, // TODO: parse array
             .offline = if (obj.get("offline")) |v| v.bool else false,
-            .ui_enabled = if (obj.get("uiEnabled")) |v| v.bool else true,
+            .ui_enabled = if (obj.get("uiEnabled")) |v| v.bool else null,
         };
     }
 
@@ -113,7 +113,6 @@ pub const Thermostat = struct {
                 changed = true;
             }
         }
-
         if (json.get("currentTemperature")) |v| {
             const raw: f32 = switch (v) {
                 .float => |f| @floatCast(f),
@@ -126,7 +125,6 @@ pub const Thermostat = struct {
                 changed = true;
             }
         }
-
         if (json.get("hvacMode")) |v| {
             if (v == .string) {
                 if (std.meta.stringToEnum(HvacMode, v.string)) |mode| {
@@ -161,7 +159,6 @@ pub const Thermostat = struct {
                 changed = true;
             }
         }
-
         if (json.get("setpoints")) |v| {
             if (v != .object) return changed;
             const sp = v.object;
@@ -175,6 +172,12 @@ pub const Thermostat = struct {
             }
             if (sp.get("auto")) |a| {
                 self.setpoints.auto = parseSetpoint(a);
+                changed = true;
+            }
+        }
+        if (json.get("uiEnabled")) |v| {
+            if (self.ui_enabled != v.bool) {
+                self.ui_enabled = v.bool;
                 changed = true;
             }
         }

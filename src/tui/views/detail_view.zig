@@ -8,11 +8,13 @@ const Rect = @import("../types.zig").Rect;
 const Device = @import("../state/models/device.zig").Device;
 const Alarm = @import("../state/models/alarm.zig").Alarm;
 const Lock = @import("../state/models/lock.zig").Lock;
+// const Media = @import("../state/models/media.zig").Media;
 const Thermostat = @import("../state/models/thermostat.zig").Thermostat;
 
 pub const DetailView = union(enum) {
     alarm: AlarmDetail,
     lock: LockDetail,
+    //     media: MediaDetail,
     @"switch": SwitchDetail,
     thermostat: ThermostatDetail,
     none,

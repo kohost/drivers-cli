@@ -26,6 +26,10 @@ pub const Basic = struct {
                 .body = body,
             };
         }
+
+        pub fn hasData(consumer: *Consumer) bool {
+            return consumer.connector.rx_buffer.frameReady();
+        }
     };
 
     pub const Publish = struct {

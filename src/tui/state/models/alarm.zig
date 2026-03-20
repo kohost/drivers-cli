@@ -12,7 +12,6 @@ pub const Alarm = struct {
     driver: []const u8,
     areas: []Area,
     zones: []Zone,
-    code: []const u8,
     chime: ?bool,
     manufacturer: []const u8,
     model_number: []const u8,
@@ -21,12 +20,18 @@ pub const Alarm = struct {
     watts: u16,
     alerts: []const Alert,
     offline: bool,
+    credentials: []Credential,
 
     pub const Area = struct {
         id: []const u8,
         name: []const u8,
         supported_security_modes: []const SecurityMode,
         security_mode: ?SecurityMode,
+    };
+
+    pub const Credential = struct {
+        id: []const u8,
+        name: []const u8,
     };
 
     pub const Zone = struct {
@@ -48,7 +53,7 @@ pub const Alarm = struct {
             .driver = dupeStr(alloc, if (obj.get("driver")) |v| v.string else ""),
             .areas = parseAreas(alloc, obj.get("areas")),
             .zones = parseZones(alloc, obj.get("zones")),
-            .code = dupeStr(alloc, if (obj.get("code")) |v| v.string else ""),
+            .credentials = parseCredentials(alloc, obj.get("credentials")),
             .manufacturer = dupeStr(alloc, if (obj.get("manufacturer")) |v| v.string else ""),
             .serial_number = dupeStr(alloc, if (obj.get("serialNumber")) |v| v.string else ""),
             .model_number = dupeStr(alloc, if (obj.get("modelNumber")) |v| v.string else ""),
@@ -80,6 +85,12 @@ pub const Alarm = struct {
             if (zone.name.len > 0) self.alloc.free(zone.name);
         }
         if (self.zones.len > 0) self.alloc.free(self.zones);
+
+        for (self.credentials) |c| {
+            if (c.id.len > 0) self.alloc.free(c.id);
+            if (c.name.len > 0) self.alloc.free(c.name);
+        }
+        if (self.credentials.len > 0) self.alloc.free(self.credentials);
     }
 
     pub fn update(self: *Alarm, json: std.json.ObjectMap) bool {
@@ -142,6 +153,15 @@ pub const Alarm = struct {
                 }
             }
         }
+        if (json.get("credentials")) |_| {
+            for (self.credentials) |c| {
+                if (c.id.len > 0) self.alloc.free(c.id);
+                if (c.name.len > 0) self.alloc.free(c.name);
+            }
+            if (self.credentials.len > 0) self.alloc.free(self.credentials);
+            self.credentials = parseCredentials(self.alloc, json.get("credentials"));
+            changed = true;
+        }
         return changed;
     }
 
@@ -155,6 +175,19 @@ pub const Alarm = struct {
                 .name = dupeStr(alloc, if (obj.get("name")) |v| v.string else ""),
                 .supported_security_modes = &.{}, // TODO
                 .security_mode = parseSecurityMode(if (obj.get("securityMode")) |v| v.string else null),
+            };
+        }
+        return list;
+    }
+
+    fn parseCredentials(alloc: std.mem.Allocator, val: ?std.json.Value) []Credential {
+        const arr = (val orelse return &.{}).array.items;
+        var list = alloc.alloc(Credential, arr.len) catch return &.{};
+        for (arr, 0..) |item, idx| {
+            const obj = item.object;
+            list[idx] = .{
+                .id = dupeStr(alloc, if (obj.get("id")) |v| v.string else ""),
+                .name = dupeStr(alloc, if (obj.get("name")) |v| v.string else ""),
             };
         }
         return list;

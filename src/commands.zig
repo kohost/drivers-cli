@@ -16,6 +16,16 @@ pub const list = [_]CommandInfo{
     .{ .name = "UpdateCredentials", .alias = "uc", .description = "Updates credentials", .args = "credentials=[{}] auth=\"\"" },
     .{ .name = "AddCredentials", .alias = "ac", .description = "Add credentials", .args = "credentials=[{}] auth=\"\"" },
     .{ .name = "DeleteCredentials", .alias = "dc", .description = "Delete credentials", .args = "credentials=[{}] auth=\"\"" },
+
+    .{ .name = "GetUsers", .alias = "gu", .description = "Get all users", .args = null },
+    .{ .name = "UpdateUsers", .alias = "uu", .description = "Update users", .args = "users=[{}]" },
+    .{ .name = "AddUsers", .alias = "au", .description = "Add users", .args = "users=[{}]" },
+    .{ .name = "DeleteUsers", .alias = "du", .description = "Delete users", .args = "users=[{}]" },
+
+    .{ .name = "GetGroups", .alias = "gg", .description = "Get all groups", .args = null },
+    .{ .name = "UpdateGroups", .alias = "ug", .description = "Update groups", .args = "groups=[{}]" },
+    .{ .name = "AddGroups", .alias = "ag", .description = "Add groups", .args = "groups=[{}]" },
+    .{ .name = "DeleteGroups", .alias = "dg", .description = "Delete groups", .args = "groups=[{}]" },
 };
 
 pub fn findMatch(str: []const u8) ?[]const u8 {

@@ -181,16 +181,21 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
             try view.tickSpinner(stdout);
         }
 
-        // Handle AMQP message
+        // Handle AMQP messages (drain all buffered)
         if (poll_fds[1].revents & std.posix.POLL.IN != 0) {
-            const msg = consumer.next() catch continue;
-            const parsed = std.json.parseFromSlice(std.json.Value, alloc, msg.body, .{}) catch continue;
-            defer parsed.deinit();
-            if (getResponseError(parsed.value)) |err_msg| {
-                notification.show(err_msg);
-                notification.render(stdout, termSize.cols);
+            var needs_render = false;
+            while (true) {
+                const msg = consumer.next() catch break;
+                const parsed = std.json.parseFromSlice(std.json.Value, alloc, msg.body, .{}) catch continue;
+                defer parsed.deinit();
+                if (getResponseError(parsed.value)) |err_msg| {
+                    notification.show(err_msg);
+                    notification.render(stdout, termSize.cols);
+                }
+                if (state.update(parsed.value)) needs_render = true;
+                if (!consumer.hasData()) break;
             }
-            if (state.update(parsed.value)) {
+            if (needs_render) {
                 try view.render(stdout, zone == .content);
             }
         }
