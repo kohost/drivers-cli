@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
     const options = b.addOptions();
     const git_describe = b.run(&.{ "git", "describe", "--tags", "--abbrev=0" });
     options.addOption([]const u8, "version", git_describe);
-    module.addOptions("config", options);
+    module.addOptions("build_options", options);
 
     const exe = b.addExecutable(.{ .name = "drivers-cli", .root_module = module });
 

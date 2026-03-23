@@ -1,6 +1,7 @@
 const std = @import("std");
 const parse = @import("parse.zig");
 
+/// Opens a TCP connection to a Kohost driver at the given host and port.
 pub fn connect(host: []const u8, port: u16) !std.net.Stream {
     const address = try std.net.Address.parseIp(host, port);
     const stream = try std.net.tcpConnectToAddress(address);
@@ -8,6 +9,9 @@ pub fn connect(host: []const u8, port: u16) !std.net.Stream {
     return stream;
 }
 
+/// Builds a JSON request from the command string, sends it over the stream,
+/// reads the response until complete JSON is received, and returns the data payload.
+/// Caller owns the returned slice.
 pub fn sendCmd(stream: std.net.Stream, alloc: std.mem.Allocator, cmd: []const u8) ![]const u8 {
     const req = try parse.buildRequest(alloc, cmd);
     defer alloc.free(req);
@@ -19,44 +23,14 @@ pub fn sendCmd(stream: std.net.Stream, alloc: std.mem.Allocator, cmd: []const u8
 
     var buffer: [4096]u8 = undefined;
     while (true) {
-        const bytes_read = stream.read(&buffer) catch break;
+        const bytes_read = try stream.read(&buffer);
         if (bytes_read == 0) break;
         try response.appendSlice(alloc, buffer[0..bytes_read]);
 
-        if (isCompleteJson(response.items)) break;
+        if (parse.isCompleteJson(response.items)) break;
     }
 
-    const res = try response.toOwnedSlice(alloc);
-    defer alloc.free(res);
-
-    return try parse.getData(alloc, res);
-}
-
-fn isCompleteJson(data: []const u8) bool {
-    if (data.len == 0) return false;
-
-    var depth: i32 = 0;
-    var in_string = false;
-    var escape = false;
-
-    for (data) |c| {
-        if (escape) {
-            escape = false;
-            continue;
-        }
-        if (c == '\\' and in_string) {
-            escape = true;
-            continue;
-        }
-        if (c == '"') {
-            in_string = !in_string;
-            continue;
-        }
-        if (in_string) continue;
-
-        if (c == '{' or c == '[') depth += 1;
-        if (c == '}' or c == ']') depth -= 1;
-    }
-
-    return depth == 0 and (data[0] == '{' or data[0] == '[');
+    const data = try parse.getData(alloc, response.items);
+    response.deinit(alloc);
+    return data;
 }

@@ -167,6 +167,35 @@ pub fn formatJSON(alloc: std.mem.Allocator, str: []const u8) ![]const u8 {
     return try aw.toOwnedSlice();
 }
 
+pub fn isCompleteJson(data: []const u8) bool {
+    if (data.len == 0) return false;
+
+    var depth: i32 = 0;
+    var in_string = false;
+    var escape = false;
+
+    for (data) |c| {
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        if (c == '\\' and in_string) {
+            escape = true;
+            continue;
+        }
+        if (c == '"') {
+            in_string = !in_string;
+            continue;
+        }
+        if (in_string) continue;
+
+        if (c == '{' or c == '[') depth += 1;
+        if (c == '}' or c == ']') depth -= 1;
+    }
+
+    return depth == 0 and (data[0] == '{' or data[0] == '[');
+}
+
 // Builds request in format Kohost expects
 // {command: string, data: Object}
 // ex. {command: UpdateDevices, data: {devices: [{id:1234, level: 50}]} }
