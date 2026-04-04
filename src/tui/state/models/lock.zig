@@ -30,7 +30,7 @@ pub const Lock = struct {
             .name = dupeStr(alloc, if (obj.get("name")) |v| v.string else ""),
             .driver = dupeStr(alloc, if (obj.get("driver")) |v| v.string else ""),
             .state = blk: {
-                const s = if (obj.get("state")) |v| v.string else "unlocked";
+                const s = if (obj.get("state")) |v| if (v == .string) v.string else "unlocked" else "unlocked";
                 break :blk if (std.mem.eql(u8, s, "locked")) .locked else .unlocked;
             },
             .mode = blk: {

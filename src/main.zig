@@ -1,6 +1,6 @@
 const std = @import("std");
 const build_options = @import("build_options");
-// const tui = @import("./tui.zig");
+const tui = @import("./tui.zig");
 const repl = @import("./repl.zig");
 const amqp = @import("amqp");
 const Config = @import("./config.zig").Config;
@@ -21,14 +21,11 @@ pub fn main() !void {
     defer std.process.argsFree(alloc, args);
     const cfg = parseArgs(args);
 
-    // Launch TUI
-    // if (cfg.tui) {
-    //     try tui.run(cfg, alloc);
-    //     // Launch REPL
-    // } else {
-    try repl.run(cfg, alloc);
-    // }
-
+    if (cfg.tui) {
+        try tui.run(cfg, alloc);
+    } else {
+        try repl.run(cfg, alloc);
+    }
 }
 
 /// Parses command-line args into a Config.

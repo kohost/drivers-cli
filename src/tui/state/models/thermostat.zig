@@ -30,6 +30,7 @@ pub const Thermostat = struct {
     alerts: []const Alert,
     offline: bool,
     ui_enabled: ?bool,
+    cycle_rate: ?u8,
 
     pub const Setpoints = struct {
         cool: ?Setpoint = null,
@@ -90,6 +91,7 @@ pub const Thermostat = struct {
             .alerts = &.{}, // TODO: parse array
             .offline = if (obj.get("offline")) |v| v.bool else false,
             .ui_enabled = if (obj.get("uiEnabled")) |v| v.bool else null,
+            .cycle_rate = if (obj.get("cycleRate")) |v| @intCast(v.integer) else null,
         };
     }
 

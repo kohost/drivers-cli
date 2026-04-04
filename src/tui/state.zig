@@ -1,7 +1,7 @@
 const std = @import("std");
-const Device = @import("models/device.zig").Device;
+const Device = @import("state/models/device.zig").Device;
 
-pub const AppState = struct {
+pub const State = struct {
     devices: std.ArrayListUnmanaged(Device),
     alloc: std.mem.Allocator,
     system: ?struct {
@@ -13,7 +13,7 @@ pub const AppState = struct {
         web_app_url: []const u8,
     },
 
-    pub fn init(alloc: std.mem.Allocator) AppState {
+    pub fn init(alloc: std.mem.Allocator) State {
         return .{
             .devices = .{},
             .alloc = alloc,
@@ -21,7 +21,7 @@ pub const AppState = struct {
         };
     }
 
-    pub fn deinit(self: *AppState) void {
+    pub fn deinit(self: *State) void {
         if (self.system) |sys| {
             if (sys.manufacturer.len > 0) self.alloc.free(sys.manufacturer);
             if (sys.model.len > 0) self.alloc.free(sys.model);
@@ -36,15 +36,21 @@ pub const AppState = struct {
         self.devices.deinit(self.alloc);
     }
 
-    pub fn getDevice(self: *AppState, device_id: []const u8) ?*Device {
+    pub fn getDevice(self: *State, device_id: []const u8) ?*Device {
         for (self.devices.items) |*device| {
             if (std.mem.eql(u8, device.id(), device_id)) return device;
         }
         return null;
     }
 
-    pub fn loadFromJson(self: *AppState, json: std.json.Value) !void {
-        if (json.object.get("context")) |ctx| {
+    pub fn loadFromJson(self: *State, json: std.json.Value) !void {
+        // Unwrap outer data wrapper if present
+        const root = blk: {
+            const d = json.object.get("data") orelse break :blk json;
+            break :blk if (d == .object) d else json;
+        };
+
+        if (root.object.get("context")) |ctx| {
             if (ctx.object.get("system")) |sys| {
                 const obj = sys.object;
                 self.system = .{
@@ -58,7 +64,8 @@ pub const AppState = struct {
             }
         }
 
-        const data = json.object.get("data") orelse return;
+        const data = root.object.get("data") orelse return;
+        if (data != .array) return;
 
         for (data.array.items) |item| {
             if (Device.fromJson(self.alloc, item.object)) |device| {
@@ -67,7 +74,7 @@ pub const AppState = struct {
         }
     }
 
-    pub fn update(self: *AppState, json: std.json.Value) bool {
+    pub fn update(self: *State, json: std.json.Value) bool {
         const data = json.object.get("data") orelse return false;
         if (data != .array) return false;
 
