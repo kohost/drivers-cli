@@ -40,7 +40,12 @@ pub const App = struct {
             .cfg = cfg,
             .mq = MessageQueue.init(),
             .layout = Layout.init(cols, rows, undefined),
-            .view = .{ .driver = try DriverView.init(alloc, state, x, y, width, height, cfg) },
+            .view = .{ .driver = try DriverView.init(.{
+                .alloc = alloc,
+                .state = state,
+                .appCfg = cfg,
+                .frame = .{ .x = x, .y = y, .w = width, .h = height },
+            }) },
             .focused = 0,
             .prev_focus = 0,
             .input_prefix = 0,
@@ -61,15 +66,12 @@ pub const App = struct {
         self.layout.resize(cols, rows);
         self.view.deinit();
         self.view = .{
-            .driver = try DriverView.init( //
-                self.alloc, //
-                self.state, //
-                x, //
-                y, //
-                cols, //
-                height, //
-                self.cfg //
-            ),
+            .driver = try DriverView.init(.{
+                .alloc = self.alloc,
+                .state = self.state,
+                .appCfg = self.cfg,
+                .frame = .{ .x = x, .y = y, .w = cols, .h = height },
+            }),
         };
     }
 
@@ -158,7 +160,12 @@ pub const App = struct {
         self.view.deinit();
         switch (idx) {
             0 => {
-                if (DriverView.init(self.alloc, self.state, 1, 5, self.cols, self.rows - 6, self.cfg)) |dv| {
+                if (DriverView.init(.{
+                    .alloc = self.alloc,
+                    .state = self.state,
+                    .appCfg = self.cfg,
+                    .frame = .{ .x = 1, .y = 5, .w = self.cols, .h = self.rows - 6 },
+                })) |dv| {
                     self.view = .{ .driver = dv };
                 } else |_| {
                     self.view = .none;

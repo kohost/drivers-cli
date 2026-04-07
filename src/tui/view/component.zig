@@ -34,6 +34,26 @@ pub const Style = struct {
     padding_right: u8 = 0,
 };
 
+pub const Frame = struct {
+    x: u16 = 0,
+    y: u16 = 0,
+    w: u16 = 0,
+    h: u16 = 0,
+};
+
+pub const ComponentInterface = struct {
+    write_fn: *const fn (*ComponentInterface, *Writer, *Cursor, Frame) anyerror!void,
+    handleKey_fn: *const fn (*ComponentInterface, u8, *MessageQueue) KeyResult,
+
+    pub fn write(self: *ComponentInterface, writer: *Writer, cursor: *Cursor, frame: Frame) !void {
+        try self.write_fn(self, writer, cursor, frame);
+    }
+
+    pub fn handleKey(self: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        return self.handleKey_fn(self, key, mq);
+    }
+};
+
 pub const Component = struct {
     ptr: *anyopaque,
     vtable: *const VTable,

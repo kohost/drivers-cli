@@ -1,18 +1,19 @@
 const std = @import("std");
 const Color = @import("../color.zig");
 const utils = @import("../utils.zig");
-const Config = @import("../../config.zig").Config;
+const AppConfig = @import("../../config.zig").Config;
 const State = @import("../state.zig").State;
 const Panel = @import("component/panel.zig").Panel;
 const Cell = @import("component/table.zig").Cell;
 const Table = @import("component/table.zig").Table;
-const Component = @import("component.zig").Component;
 const Cursor = @import("component.zig").Cursor;
+const Frame = @import("component.zig").Frame;
 const KeyResult = @import("component.zig").KeyResult;
 const MessageQueue = @import("../message_queue.zig").MessageQueue;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const Select = @import("component/select.zig").Select;
 const Button = @import("component/button.zig").Button;
+const TextInput = @import("component/text_input.zig").TextInput;
 const Style = @import("component.zig").Style;
 const icons = @import("../icons.zig");
 const commands = @import("../../commands.zig");
@@ -40,25 +41,23 @@ pub const DriverView = struct {
     list_selected: ?usize,
     thermostat_view: ThermostatView,
     command_select: Select,
+    // url: TextInput,
     send_button: Button,
-    x: u16,
-    y: u16,
-    width: u16,
-    height: u16,
+    frame: Frame,
 
-    pub fn init(
+    pub const Config = struct {
         alloc: std.mem.Allocator,
         state: *State,
-        x: u16,
-        y: u16,
-        width: u16,
-        height: u16,
-        cfg: Config,
-    ) !DriverView {
-        const manufacturer = if (state.system) |sys| sys.manufacturer else "Unknown";
-        const host_label = try std.fmt.allocPrint(alloc, "{s}:{d}", .{
-            cfg.host,
-            cfg.port,
+        appCfg: AppConfig,
+        frame: Frame,
+    };
+
+    pub fn init(cfg: Config) !DriverView {
+        const app = cfg.appCfg;
+        const manufacturer = if (cfg.state.system) |sys| sys.manufacturer else "Unknown";
+        const host_label = try std.fmt.allocPrint(cfg.alloc, "tcp://{s}:{d}", .{
+            app.host,
+            app.port,
         });
         var panels: [4]Panel = undefined;
         panels[0] = Panel.init(.{
@@ -69,8 +68,8 @@ pub const DriverView = struct {
         panels[2] = Panel.init(.{ .top_left = "Request" });
         panels[3] = Panel.init(.{ .top_left = "Response" });
         return .{
-            .alloc = alloc,
-            .state = state,
+            .alloc = cfg.alloc,
+            .state = cfg.state,
             .host_label = host_label,
             .manufacturer = manufacturer,
             .depth = 0,
@@ -86,17 +85,18 @@ pub const DriverView = struct {
                 .padding_left = 1,
                 .padding_right = 1,
             }),
-            .send_button = Button.init(icons.send ++ " Send", .{
-                .color = Color.mauve_dark,
-                .bg_color = Color.bg_lavender,
-            }),
-            .x = x,
-            .y = y,
-            .width = width,
-            .height = height,
+            // .url = TextInput.init(host_label),
+            .send_button = Button.init(
+                icons.send ++ " Send",
+                .{
+                    .color = Color.mauve_dark,
+                    .bg_color = Color.bg_lavender,
+                },
+            ),
+            .frame = cfg.frame,
             .panels = panels,
             .panel_count = 4,
-            .table = Table.init(alloc, &.{
+            .table = Table.init(cfg.alloc, &.{
                 .{ .value = .{ .string = "type" }, .align_right = true },
                 .{ .value = .{ .string = "id" } },
                 .{ .value = .{ .string = "name" } },
@@ -162,32 +162,42 @@ pub const DriverView = struct {
 
         // Draw panels
         // Panel 0: full width, top 50%
-        const half = self.height / 2;
-        const select_y = self.y + half + 1;
+        const f = self.frame;
+        const half = f.h / 2;
+        const select_y = f.y + half + 1;
         const bottom_y = select_y + 1;
-        const bottom_h = self.height - half - 2;
-        const left_w = self.width / 5;
-        const right_w = self.width - left_w;
-        const right_x = self.x + left_w;
+        const bottom_h = f.h - half - 2;
+        const left_w = f.w / 5;
+        const right_w = f.w - left_w;
+        const right_x = f.x + left_w;
         const right_half = bottom_h / 2;
 
-        try self.panels[0].component().write(writer, self.x, self.y, self.width, half, cursor);
+        try self.panels[0].component().write(writer, f.x, f.y, f.w, half, cursor);
         // Panel 1: left 20%, bottom
-        try self.panels[1].component().write(writer, self.x, bottom_y, left_w, bottom_h, cursor);
+        try self.panels[1].component().write(writer, f.x, bottom_y, left_w, bottom_h, cursor);
         // Panel 2: right 80%, top-right
         try self.panels[2].component().write(writer, right_x, bottom_y, right_w, right_half, cursor);
         // Panel 3: right 80%, bottom-right
         try self.panels[3].component().write(writer, right_x, bottom_y + right_half, right_w, bottom_h - right_half, cursor);
         // Command row - draw bg_mantle across, then select/button draw on top
-        try utils.moveTo(writer, self.x + 1, select_y);
+        try utils.moveTo(writer, f.x + 1, select_y);
         try writer.writeAll(Color.bg_lavender_dark);
-        for (0..self.width -| 2) |_| try writer.writeAll(" ");
+        for (0..f.w -| 2) |_| try writer.writeAll(" ");
         try writer.writeAll(Color.reset);
         // Command row components
-        try self.command_select.component().write(writer, self.x + 1, select_y, self.width, 1, cursor);
+        try self.command_select.component().write(writer, f.x + 1, select_y, f.w, 1, cursor);
+
+        // Url
+        // try self.url.component().write(writer, )
+
         // Send button, right-justified
-        const btn_x = self.x + self.width - 9;
-        try self.send_button.component().write(writer, btn_x, select_y, 10, 1, cursor);
+        const btn_x = f.x + f.w - 9;
+        try self.send_button.interface.write(writer, cursor, .{
+            .x = btn_x,
+            .y = select_y,
+            .w = 10,
+            .h = 1,
+        });
     }
 
     // Children: 0=main(table or kv_list), 1=details
