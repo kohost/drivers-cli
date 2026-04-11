@@ -13,7 +13,7 @@ const MessageQueue = @import("../message_queue.zig").MessageQueue;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const Select = @import("component/select.zig").Select;
 const Button = @import("component/button.zig").Button;
-const TextInput = @import("component/text_input.zig").TextInput;
+const TextDisplay = @import("component/text_display.zig").TextDisplay;
 const Style = @import("component.zig").Style;
 const icons = @import("../icons.zig");
 const commands = @import("../../commands.zig");
@@ -41,7 +41,7 @@ pub const DriverView = struct {
     list_selected: ?usize,
     thermostat_view: ThermostatView,
     command_select: Select,
-    // url: TextInput,
+    url: TextDisplay,
     send_button: Button,
     frame: Frame,
 
@@ -80,16 +80,21 @@ pub const DriverView = struct {
                 .color = Color.flamingo,
                 .secondary_color = Color.dim ++ Color.flamingo,
                 .tertiary_color = Color.flamingo,
-                .bg_color = Color.bg_surface1,
+                .bg_color = Color.bg_lavender_dark,
                 .secondary_bg_color = Color.bg_surface0,
                 .padding_left = 1,
                 .padding_right = 1,
             }),
-            // .url = TextInput.init(host_label),
+            .url = TextDisplay.init(host_label, .{
+                // .color = Color.subtext0,
+                .color = Color.flamingo,
+                .bg_color = Color.bg_mantle,
+                .padding_left = 1,
+            }),
             .send_button = Button.init(
                 icons.send ++ " Send",
                 .{
-                    .color = Color.mauve_dark,
+                    .color = Color.mantle,
                     .bg_color = Color.bg_lavender,
                 },
             ),
@@ -132,7 +137,7 @@ pub const DriverView = struct {
                     .{ .value = .{ .string = if (device.offline()) "✗" else "✔" }, .style = if (device.offline()) Color.red else Color.green },
                 });
             }
-            self.panels[0].setChildren(&.{self.table.component()});
+            self.panels[0].setChildren(&.{&self.table.interface});
             self.panels[0].top_left = self.manufacturer;
 
             // Search label
@@ -146,7 +151,7 @@ pub const DriverView = struct {
                 self.panels[0].bottom_right = icon;
             }
         } else if (self.depth == 1) {
-            self.panels[0].setChildren(&.{self.thermostat_view.component()});
+            self.panels[0].setChildren(&.{&self.thermostat_view.interface});
 
             // Panel label: manufacturer/device-id
             var title_buf: [128]u8 = undefined;
@@ -172,23 +177,29 @@ pub const DriverView = struct {
         const right_x = f.x + left_w;
         const right_half = bottom_h / 2;
 
-        try self.panels[0].component().write(writer, f.x, f.y, f.w, half, cursor);
+        try self.panels[0].interface.write(writer, cursor, .{ .x = f.x, .y = f.y, .w = f.w, .h = half });
         // Panel 1: left 20%, bottom
-        try self.panels[1].component().write(writer, f.x, bottom_y, left_w, bottom_h, cursor);
+        try self.panels[1].interface.write(writer, cursor, .{ .x = f.x, .y = bottom_y, .w = left_w, .h = bottom_h });
         // Panel 2: right 80%, top-right
-        try self.panels[2].component().write(writer, right_x, bottom_y, right_w, right_half, cursor);
+        try self.panels[2].interface.write(writer, cursor, .{ .x = right_x, .y = bottom_y, .w = right_w, .h = right_half });
         // Panel 3: right 80%, bottom-right
-        try self.panels[3].component().write(writer, right_x, bottom_y + right_half, right_w, bottom_h - right_half, cursor);
+        try self.panels[3].interface.write(writer, cursor, .{ .x = right_x, .y = bottom_y + right_half, .w = right_w, .h = bottom_h - right_half });
         // Command row - draw bg_mantle across, then select/button draw on top
         try utils.moveTo(writer, f.x + 1, select_y);
-        try writer.writeAll(Color.bg_lavender_dark);
+        try writer.writeAll(Color.bg_mantle);
         for (0..f.w -| 2) |_| try writer.writeAll(" ");
         try writer.writeAll(Color.reset);
         // Command row components
-        try self.command_select.component().write(writer, f.x + 1, select_y, f.w, 1, cursor);
+        try self.command_select.interface.write(writer, cursor, .{ .x = f.x + 1, .y = select_y, .w = f.w, .h = 1 });
 
         // Url
         // try self.url.component().write(writer, )
+        try self.url.interface.write(writer, cursor, .{
+            .x = f.x + 22, //
+            .y = select_y,
+            .w = f.w,
+            .h = f.h,
+        });
 
         // Send button, right-justified
         const btn_x = f.x + f.w - 9;
@@ -206,7 +217,7 @@ pub const DriverView = struct {
             const result = if (self.depth == 0)
                 self.table.handleKeyDirect(key, mq)
             else
-                self.thermostat_view.component().handleKey(key, mq);
+                self.thermostat_view.interface.handleKey(key, mq);
             switch (result) {
                 .dive_in => {
                     if (self.depth == 0) {
@@ -260,18 +271,25 @@ pub const DriverView = struct {
         } else if (self.focused) |f| {
             // Forward keys to Select when focused
             if (f == 4) {
-                const select_result = self.command_select.component().handleKey(key, mq);
+                const select_result = self.command_select.interface.handleKey(key, mq);
                 if (select_result == .consumed) return .consumed;
             }
             // Spatial navigation
             //   Panel 0 (top)
-            //   Select (4) (command row)
+            //   Select (4) | Button (5) (command row)
             //   Panel 1 (bottom-left) | Panel 2 (top-right)
             //                         | Panel 3 (bottom-right)
             const target: ?usize = switch (f) {
                 4 => switch (key) {
                     'k' => 0,
+                    'l' => 5,
                     'j' => 1,
+                    else => null,
+                },
+                5 => switch (key) {
+                    'k' => 0,
+                    'h' => 4,
+                    'j' => 2,
                     else => null,
                 },
                 1 => switch (key) {
@@ -280,7 +298,7 @@ pub const DriverView = struct {
                     else => null,
                 },
                 2 => switch (key) {
-                    'k' => 4,
+                    'k' => 5,
                     'h' => 1,
                     'j' => 3,
                     else => null,
@@ -330,6 +348,7 @@ pub const DriverView = struct {
         // Update child focus
         self.table.focused = (idx == 0 and self.depth == 0);
         self.command_select.focused = (idx == 4);
+        self.send_button.focused = (idx == 5);
         if (self.depth == 1) {
             if (idx == 0) {
                 if (self.thermostat_view.list.focused == null) self.thermostat_view.list.focused = 0;

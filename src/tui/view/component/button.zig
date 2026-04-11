@@ -35,13 +35,18 @@ pub const Button = struct {
         const self: *Button = @fieldParentPtr("interface", interface);
         _ = cursor;
 
-        const color = if (self.style.color.len > 0) self.style.color else Color.text;
-        const bg_color = if (self.style.bg_color.len > 0) self.style.bg_color else Color.bg_overlay0;
+        var color = if (self.style.color.len > 0) self.style.color else Color.text;
+        var bg_color = if (self.style.bg_color.len > 0) self.style.bg_color else Color.bg_overlay0;
+
+        if (self.focused) {
+            bg_color = Color.bg_lavender_dark;
+            color = Color.lavender;
+        }
 
         try utils.moveTo(writer, frame.x, frame.y);
         try writer.writeAll(bg_color);
         try writer.writeAll(color);
-        try writer.writeAll(" ");
+        if (self.focused) try writer.writeAll("▎") else try writer.writeAll(" ");
         try writer.writeAll(self.label);
         try writer.writeAll(" ");
         try writer.writeAll(Color.reset);

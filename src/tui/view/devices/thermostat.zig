@@ -2,8 +2,9 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const Component = @import("../component.zig").Component;
+const ComponentInterface = @import("../component.zig").ComponentInterface;
 const Cursor = @import("../component.zig").Cursor;
+const Frame = @import("../component.zig").Frame;
 const KeyResult = @import("../component.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Thermostat = @import("../../state/models/thermostat.zig").Thermostat;
@@ -13,12 +14,17 @@ const KeyVal = @import("../component/key_val_list.zig").KeyVal;
 const KeyValList = @import("../component/key_val_list.zig").KeyValList;
 
 pub const ThermostatView = struct {
+    interface: ComponentInterface,
     arena: ArenaAllocator,
     thermostat: *const Thermostat,
     list: KeyValList,
 
     pub fn init(a: Allocator, thermostat: *const Thermostat) !ThermostatView {
         var self = ThermostatView{
+            .interface = .{
+                .write_fn = write,
+                .handleKey_fn = handleKey,
+            },
             .arena = ArenaAllocator.init(a),
             .thermostat = thermostat,
             .list = undefined,
@@ -76,44 +82,33 @@ pub const ThermostatView = struct {
         self.arena.deinit();
     }
 
-    pub fn component(self: *ThermostatView) Component {
-        return .{ .ptr = @ptrCast(self), .vtable = &.{
-            .write = write,
-            .handleKey = handleKey,
-        } };
-    }
-
     fn write(
-        ptr: *anyopaque,
+        iface: *ComponentInterface,
         writer: *std.Io.Writer,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
         cursor: *Cursor,
+        frame: Frame,
     ) anyerror!void {
-        const self: *ThermostatView = @ptrCast(@alignCast(ptr));
-        try self.list.component().write(writer, x, y, w, h, cursor);
+        const self: *ThermostatView = @fieldParentPtr("interface", iface);
+        try self.list.interface.write(writer, cursor, frame);
     }
 
-
-    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *ThermostatView = @ptrCast(@alignCast(ptr));
-        return self.list.component().handleKey(key, mq);
+    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *ThermostatView = @fieldParentPtr("interface", iface);
+        return self.list.interface.handleKey(key, mq);
     }
 
     fn addDisplay(self: *ThermostatView, label: []const u8, source: []const u8) !void {
         const alloc = self.arena.allocator();
         const d = try alloc.create(TextDisplay);
-        d.* = TextDisplay.init(source);
-        try self.list.addRow(label, d.component());
+        d.* = TextDisplay.init(source, .{});
+        try self.list.addRow(label, &d.interface);
     }
 
     fn addInput(self: *ThermostatView, label: []const u8, source: []const u8) !void {
         const alloc = self.arena.allocator();
         const i = try alloc.create(TextInput);
         i.* = TextInput.init(source);
-        try self.list.addRow(label, i.component());
+        try self.list.addRow(label, &i.interface);
     }
 
     fn addSetpoint(self: *ThermostatView, name: []const u8, sp: Thermostat.Setpoint) !void {

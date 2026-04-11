@@ -2,7 +2,8 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
 const comp = @import("../component.zig");
-const Component = comp.Component;
+const ComponentInterface = comp.ComponentInterface;
+const Frame = comp.Frame;
 const KeyResult = comp.KeyResult;
 const Cursor = comp.Cursor;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
@@ -10,12 +11,13 @@ const Writer = std.Io.Writer;
 const displayWidth = utils.displayWidth;
 
 pub const Panel = struct {
+    interface: ComponentInterface,
     top_left: []const u8,
     top_right: []const u8,
     bottom_left: []const u8,
     bottom_right: []const u8,
     focused: bool,
-    children: [4]Component,
+    children: [4]*ComponentInterface,
     child_count: u8,
 
     pub fn init(opts: struct {
@@ -26,6 +28,10 @@ pub const Panel = struct {
         focused: bool = false,
     }) Panel {
         return .{
+            .interface = .{
+                .write_fn = write,
+                .handleKey_fn = handleKey,
+            },
             .top_left = opts.top_left,
             .top_right = opts.top_right,
             .bottom_left = opts.bottom_left,
@@ -36,7 +42,7 @@ pub const Panel = struct {
         };
     }
 
-    pub fn setChildren(self: *Panel, new_children: []const Component) void {
+    pub fn setChildren(self: *Panel, new_children: []const *ComponentInterface) void {
         const count: u8 = @intCast(@min(new_children.len, self.children.len));
         for (0..count) |i| {
             self.children[i] = new_children[i];
@@ -44,15 +50,8 @@ pub const Panel = struct {
         self.child_count = count;
     }
 
-    pub fn component(self: *Panel) Component {
-        return .{ .ptr = @ptrCast(self), .vtable = &.{
-            .write = write,
-            .handleKey = handleKey,
-        } };
-    }
-
-    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Panel = @ptrCast(@alignCast(ptr));
+    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Panel = @fieldParentPtr("interface", iface);
         if (self.child_count > 0) {
             return self.children[0].handleKey(key, mq);
         }
@@ -60,15 +59,16 @@ pub const Panel = struct {
     }
 
     fn write(
-        ptr: *anyopaque,
+        iface: *ComponentInterface,
         writer: *Writer,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
         cursor: *Cursor,
+        frame: Frame,
     ) anyerror!void {
-        const self: *Panel = @ptrCast(@alignCast(ptr));
+        const self: *Panel = @fieldParentPtr("interface", iface);
+        const x = frame.x;
+        const y = frame.y;
+        const w = frame.w;
+        const h = frame.h;
         const inner = w -| 2;
         const border = if (self.focused) Color.overlay1 else Color.dim;
         const label = if (self.focused) Color.lavender else Color.dim ++ Color.lavender;
@@ -145,7 +145,7 @@ pub const Panel = struct {
         for (self.children[0..self.child_count]) |child| {
             if (cy >= y + h - 1) break;
             const remaining = (y + h - 1) - cy;
-            try child.write(writer, inner_x, cy, inner_w, remaining, cursor);
+            try child.write(writer, cursor, .{ .x = inner_x, .y = cy, .w = inner_w, .h = remaining });
         }
     }
 

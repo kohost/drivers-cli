@@ -2,7 +2,9 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
 const comp = @import("../component.zig");
-const Component = comp.Component;
+const ComponentInterface = comp.ComponentInterface;
+const Cursor = comp.Cursor;
+const Frame = comp.Frame;
 const KeyResult = comp.KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Writer = std.Io.Writer;
@@ -44,6 +46,7 @@ pub const Cell = struct {
 pub const Row = []const Cell;
 
 pub const Table = struct {
+    interface: ComponentInterface,
     alloc: std.mem.Allocator,
     headers: []const Cell,
     rows: std.ArrayListUnmanaged(Row),
@@ -58,6 +61,10 @@ pub const Table = struct {
 
     pub fn init(alloc: std.mem.Allocator, headers: []const Cell) Table {
         return .{
+            .interface = .{
+                .write_fn = write,
+                .handleKey_fn = handleKey,
+            },
             .alloc = alloc,
             .headers = headers,
             .rows = .empty,
@@ -92,19 +99,12 @@ pub const Table = struct {
         self.rows.clearRetainingCapacity();
     }
 
-    pub fn component(self: *Table) Component {
-        return .{ .ptr = @ptrCast(self), .vtable = &.{
-            .write = write,
-            .handleKey = handleKey,
-        } };
-    }
-
     pub fn handleKeyDirect(self: *Table, key: u8, mq: *MessageQueue) KeyResult {
         return handleKeyImpl(self, key, mq);
     }
 
-    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Table = @ptrCast(@alignCast(ptr));
+    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Table = @fieldParentPtr("interface", iface);
         return handleKeyImpl(self, key, mq);
     }
 
@@ -189,16 +189,15 @@ pub const Table = struct {
     }
 
     fn write(
-        ptr: *anyopaque,
+        iface: *ComponentInterface,
         writer: *Writer,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
-        _: *@import("../component.zig").Cursor,
+        _: *Cursor,
+        frame: Frame,
     ) anyerror!void {
-        const self: *Table = @ptrCast(@alignCast(ptr));
-        _ = w;
+        const self: *Table = @fieldParentPtr("interface", iface);
+        const x = frame.x;
+        const y = frame.y;
+        const h = frame.h;
         const items = self.rows.items;
 
         var widths: [16]u16 = .{0} ** 16;

@@ -2,14 +2,16 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
 const Writer = std.Io.Writer;
-const Component = @import("../component.zig").Component;
+const ComponentInterface = @import("../component.zig").ComponentInterface;
 const Cursor = @import("../component.zig").Cursor;
+const Frame = @import("../component.zig").Frame;
 const KeyResult = @import("../component.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
-pub const KeyVal = struct { label: []const u8, value: Component };
+pub const KeyVal = struct { label: []const u8, value: *ComponentInterface };
 
 pub const KeyValList = struct {
+    interface: ComponentInterface,
     alloc: std.mem.Allocator,
     rows: std.ArrayListUnmanaged(KeyVal),
     focused: ?usize,
@@ -17,6 +19,10 @@ pub const KeyValList = struct {
 
     pub fn init(alloc: std.mem.Allocator) KeyValList {
         return .{
+            .interface = .{
+                .write_fn = write,
+                .handleKey_fn = handleKey,
+            },
             .alloc = alloc,
             .rows = .empty,
             .focused = null,
@@ -28,30 +34,17 @@ pub const KeyValList = struct {
         self.rows.deinit(self.alloc);
     }
 
-    pub fn addRow(self: *KeyValList, label: []const u8, value: Component) !void {
+    pub fn addRow(self: *KeyValList, label: []const u8, value: *ComponentInterface) !void {
         try self.rows.append(self.alloc, .{ .label = label, .value = value });
     }
 
-    pub fn component(self: *KeyValList) Component {
-        return .{
-            .ptr = @ptrCast(self),
-            .vtable = &.{
-                .write = write,
-                .handleKey = handleKey,
-            },
-        };
-    }
-
-    pub fn write(
-        ptr: *anyopaque,
+    fn write(
+        iface: *ComponentInterface,
         writer: *Writer,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
         cursor: *Cursor,
+        frame: Frame,
     ) anyerror!void {
-        const self: *KeyValList = @ptrCast(@alignCast(ptr));
+        const self: *KeyValList = @fieldParentPtr("interface", iface);
         const rows = self.rows.items;
 
         var max_label: u16 = 0;
@@ -61,16 +54,16 @@ pub const KeyValList = struct {
         }
         const value_col = max_label + 2;
 
-        var current_row = y;
+        var current_row = frame.y;
         for (rows, 0..) |row, idx| {
-            if (current_row >= y + h) break;
+            if (current_row >= frame.y + frame.h) break;
 
-            try utils.moveTo(writer, x, current_row);
+            try utils.moveTo(writer, frame.x, current_row);
 
             if (self.focused == idx) {
-                try utils.moveTo(writer, x -| 2, current_row);
+                try utils.moveTo(writer, frame.x -| 2, current_row);
                 try writer.writeAll(Color.lavender ++ "┃" ++ Color.reset);
-                try utils.moveTo(writer, x, current_row);
+                try utils.moveTo(writer, frame.x, current_row);
             }
 
             try writer.writeAll(Color.dim ++ Color.lavender);
@@ -82,16 +75,16 @@ pub const KeyValList = struct {
             const pad = value_col -| label_w;
             for (0..pad) |_| try writer.writeAll(" ");
 
-            const value_x = x + value_col;
-            try row.value.write(writer, value_x, current_row, w -| value_col, 1, cursor);
+            const value_x = frame.x + value_col;
+            try row.value.write(writer, cursor, .{ .x = value_x, .y = current_row, .w = frame.w -| value_col, .h = 1 });
 
             current_row += 1;
         }
     }
 
 
-    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *KeyValList = @ptrCast(@alignCast(ptr));
+    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *KeyValList = @fieldParentPtr("interface", iface);
         defer self.prev_key = key;
         const rows = self.rows.items;
 

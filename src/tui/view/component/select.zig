@@ -2,13 +2,15 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const icons = @import("../../icons.zig");
 const utils = @import("../../utils.zig");
-const Component = @import("../component.zig").Component;
+const ComponentInterface = @import("../component.zig").ComponentInterface;
 const Cursor = @import("../component.zig").Cursor;
+const Frame = @import("../component.zig").Frame;
 const KeyResult = @import("../component.zig").KeyResult;
 const Style = @import("../component.zig").Style;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const Select = struct {
+    interface: ComponentInterface,
     source: []const u8,
     options: []const []const u8,
     selected: usize,
@@ -28,6 +30,10 @@ pub const Select = struct {
             }
         }
         return .{
+            .interface = .{
+                .write_fn = write,
+                .handleKey_fn = handleKey,
+            },
             .source = source,
             .options = options,
             .selected = selected,
@@ -39,28 +45,15 @@ pub const Select = struct {
         };
     }
 
-    pub fn component(self: *Select) Component {
-        return .{
-            .ptr = @ptrCast(self),
-            .vtable = &.{
-                .write = write,
-                .handleKey = handleKey,
-            },
-        };
-    }
-
-    pub fn write(
-        ptr: *anyopaque,
+    fn write(
+        iface: *ComponentInterface,
         writer: *std.Io.Writer,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
         _: *Cursor,
+        frame: Frame,
     ) anyerror!void {
-        const self: *Select = @ptrCast(@alignCast(ptr));
-        _ = w;
-        _ = h;
+        const self: *Select = @fieldParentPtr("interface", iface);
+        const x = frame.x;
+        const y = frame.y;
 
         // Get longest option
         var max_width: u8 = 0;
@@ -138,12 +131,12 @@ pub const Select = struct {
         }
     }
 
-    pub fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Select = @ptrCast(@alignCast(ptr));
+    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Select = @fieldParentPtr("interface", iface);
 
         if (!self.open) {
             switch (key) {
-                'l', '\r', '\n' => {
+                '\r', '\n' => {
                     self.previous = self.selected;
                     self.open = true;
                     mq.post(.render);

@@ -1,12 +1,14 @@
 const std = @import("std");
 const utils = @import("../../utils.zig");
 const Color = @import("../../color.zig");
-const Component = @import("../component.zig").Component;
+const ComponentInterface = @import("../component.zig").ComponentInterface;
 const Cursor = @import("../component.zig").Cursor;
+const Frame = @import("../component.zig").Frame;
 const KeyResult = @import("../component.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const TextInput = struct {
+    interface: ComponentInterface,
     source: []const u8,
     buf: [128]u8,
     buf_len: u8,
@@ -16,6 +18,10 @@ pub const TextInput = struct {
 
     pub fn init(source: []const u8) TextInput {
         return .{
+            .interface = .{
+                .write_fn = write,
+                .handleKey_fn = handleKey,
+            },
             .source = source,
             .buf = undefined,
             .buf_len = 0,
@@ -25,46 +31,30 @@ pub const TextInput = struct {
         };
     }
 
-    pub fn component(self: *TextInput) Component {
-        return .{
-            .ptr = @ptrCast(self),
-            .vtable = &.{
-                .write = write,
-                .handleKey = handleKey,
-            },
-        };
-    }
-
-    pub fn write(
-        ptr: *anyopaque,
+    fn write(
+        iface: *ComponentInterface,
         writer: *std.Io.Writer,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
         cursor: *Cursor,
+        frame: Frame,
     ) anyerror!void {
-        const self: *const TextInput = @ptrCast(@alignCast(ptr));
-        _ = w;
-        _ = h;
+        const self: *TextInput = @fieldParentPtr("interface", iface);
         const text = if (self.editing or self.dirty) self.buf[0..self.buf_len] else self.source;
         const color = if (self.editing or self.dirty) Color.yellow else Color.text;
 
-        try utils.moveTo(writer, x, y);
+        try utils.moveTo(writer, frame.x, frame.y);
         try writer.writeAll(color);
         try writer.writeAll(text);
         try writer.writeAll(Color.reset);
 
         if (self.editing) {
-            cursor.x = x + self.cursor;
-            cursor.y = y;
+            cursor.x = frame.x + self.cursor;
+            cursor.y = frame.y;
             cursor.visible = true;
         }
     }
 
-
-    pub fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *TextInput = @ptrCast(@alignCast(ptr));
+    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *TextInput = @fieldParentPtr("interface", iface);
 
         if (!self.editing) {
             switch (key) {
