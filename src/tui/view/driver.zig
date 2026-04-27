@@ -27,13 +27,14 @@ const command_names = blk: {
     break :blk names;
 };
 
+const Focus = enum { main, commands, request, response, command_select, send_button };
+
 pub const DriverView = struct {
     alloc: std.mem.Allocator,
     state: *State,
     panels: [4]Panel,
-    panel_count: u8,
     table: Table,
-    focused: ?usize,
+    focused: ?Focus,
     host_label: []const u8,
     manufacturer: []const u8,
     depth: u8,
@@ -44,6 +45,10 @@ pub const DriverView = struct {
     url: TextDisplay,
     send_button: Button,
     frame: Frame,
+    req_text: []const u8,
+    req_display: TextDisplay,
+    res_text: []const u8,
+    res_display: TextDisplay,
 
     pub const Config = struct {
         alloc: std.mem.Allocator,
@@ -100,7 +105,6 @@ pub const DriverView = struct {
             ),
             .frame = cfg.frame,
             .panels = panels,
-            .panel_count = 4,
             .table = Table.init(cfg.alloc, &.{
                 .{ .value = .{ .string = "type" }, .align_right = true },
                 .{ .value = .{ .string = "id" } },
@@ -112,6 +116,16 @@ pub const DriverView = struct {
                 .{ .value = .{ .string = "online" } },
             }),
             .focused = null,
+            .req_text = try cfg.alloc.dupe(u8, ""),
+            .req_display = TextDisplay.init("", .{
+                .color = Color.subtext0,
+                .padding_left = 1,
+            }),
+            .res_text = try cfg.alloc.dupe(u8, ""),
+            .res_display = TextDisplay.init("", .{
+                .color = Color.subtext0,
+                .padding_left = 1,
+            }),
         };
     }
 
@@ -119,10 +133,16 @@ pub const DriverView = struct {
         if (self.depth == 1) self.thermostat_view.deinit();
         self.table.deinit();
         self.alloc.free(self.host_label);
+        self.alloc.free(self.req_text);
+        self.alloc.free(self.res_text);
     }
 
     pub fn write(self: *DriverView, writer: *Writer, cursor: *Cursor) !void {
         if (self.depth == 0) {
+            // Get manufacturer
+            const manufacturer = if (self.state.system) |sys| sys.manufacturer else "Unknown";
+            self.panels[0].top_left = manufacturer;
+
             // Build table rows from state
             self.table.clearRows();
             for (self.state.devices.items) |device| {
@@ -138,7 +158,6 @@ pub const DriverView = struct {
                 });
             }
             self.panels[0].setChildren(&.{&self.table.interface});
-            self.panels[0].top_left = self.manufacturer;
 
             // Search label
             const filter = self.table.getFilter();
@@ -151,6 +170,8 @@ pub const DriverView = struct {
                 self.panels[0].bottom_right = icon;
             }
         } else if (self.depth == 1) {
+            const manufacturer = if (self.state.system) |sys| sys.manufacturer else "Unknown";
+
             self.panels[0].setChildren(&.{&self.thermostat_view.interface});
 
             // Panel label: manufacturer/device-id
@@ -158,12 +179,20 @@ pub const DriverView = struct {
             if (self.device_idx) |idx| {
                 if (idx < self.state.devices.items.len) {
                     const dev = self.state.devices.items[idx];
-                    const title = std.fmt.bufPrint(&title_buf, "{s} " ++ icons.angle_right ++ " {s}", .{ self.manufacturer, dev.id() }) catch self.manufacturer;
+                    const title = std.fmt.bufPrint(&title_buf, "{s} " ++ icons.angle_right ++ " {s}", .{ manufacturer, dev.id() }) catch manufacturer;
                     self.panels[0].top_left = title;
                 }
             }
             self.panels[0].bottom_right = "";
         }
+
+        // Request
+        self.req_display.source = self.req_text;
+        self.panels[2].setChildren(&.{&self.req_display.interface});
+
+        // Response
+        self.res_display.source = self.res_text;
+        self.panels[3].setChildren(&.{&self.res_display.interface});
 
         // Draw panels
         // Panel 0: full width, top 50%
@@ -213,7 +242,7 @@ pub const DriverView = struct {
 
     // Children: 0=main(table or kv_list), 1=details
     pub fn handleKey(self: *DriverView, key: u8, mq: *MessageQueue) KeyResult {
-        if (self.focused == 0) {
+        if (self.focused == .main) {
             const result = if (self.depth == 0)
                 self.table.handleKeyDirect(key, mq)
             else
@@ -258,7 +287,7 @@ pub const DriverView = struct {
                     return .ignored;
                 },
                 .focus_next => {
-                    self.setFocus(4);
+                    self.setFocus(.command_select);
                     mq.post(.render);
                     return .consumed;
                 },
@@ -270,48 +299,68 @@ pub const DriverView = struct {
             }
         } else if (self.focused) |f| {
             // Forward keys to Select when focused
-            if (f == 4) {
+            if (f == .command_select) {
+                const was_open = self.command_select.open;
                 const select_result = self.command_select.interface.handleKey(key, mq);
-                if (select_result == .consumed) return .consumed;
+                if (select_result == .consumed) {
+                    const just_committed = was_open and !self.command_select.open and self.command_select.selected != self.command_select.previous;
+                    if (just_committed) {
+                        mq.post(.{ .command_changed = self.command_select.options[self.command_select.selected] });
+                    }
+                    return .consumed;
+                }
+            }
+            if (f == .send_button) {
+                const button_result = self.send_button.interface.handleKey(key, mq);
+                if (button_result == .consumed) return .consumed;
+            }
+            if (f == .request or f == .response) {
+                const display = if (f == .request) &self.req_display else &self.res_display;
+                const r = display.interface.handleKey(key, mq);
+                switch (r) {
+                    .consumed => return .consumed,
+                    .focus_next, .focus_prev => {},  // fall through to spatial nav
+                    else => {},
+                }
             }
             // Spatial navigation
             //   Panel 0 (top)
             //   Select (4) | Button (5) (command row)
             //   Panel 1 (bottom-left) | Panel 2 (top-right)
             //                         | Panel 3 (bottom-right)
-            const target: ?usize = switch (f) {
-                4 => switch (key) {
-                    'k' => 0,
-                    'l' => 5,
-                    'j' => 1,
+            const target: ?Focus = switch (f) {
+                .command_select => switch (key) {
+                    'k' => .main,
+                    'l' => .send_button,
+                    'j' => .commands,
                     else => null,
                 },
-                5 => switch (key) {
-                    'k' => 0,
-                    'h' => 4,
-                    'j' => 2,
+                .send_button => switch (key) {
+                    'k' => .main,
+                    'h' => .command_select,
+                    'j' => .request,
                     else => null,
                 },
-                1 => switch (key) {
-                    'k' => 4,
-                    'l' => 2,
+                .commands => switch (key) {
+                    'k' => .command_select,
+                    'l' => .request,
                     else => null,
                 },
-                2 => switch (key) {
-                    'k' => 5,
-                    'h' => 1,
-                    'j' => 3,
+                .request => switch (key) {
+                    'k' => .send_button,
+                    'h' => .commands,
+                    'j' => .response,
                     else => null,
                 },
-                3 => switch (key) {
-                    'k' => 2,
-                    'h' => 1,
+                .response => switch (key) {
+                    'k' => .request,
+                    'h' => .commands,
                     else => null,
                 },
                 else => null,
             };
             if (target) |t| {
-                if (t == 0 and self.depth == 1) {
+                if (t == .main and self.depth == 1) {
                     const len = self.thermostat_view.list.rows.items.len;
                     if (len > 0) self.thermostat_view.list.focused = len - 1;
                 }
@@ -331,7 +380,7 @@ pub const DriverView = struct {
     }
 
     pub fn focus(self: *DriverView) void {
-        self.setFocus(0);
+        self.setFocus(.main);
         if (self.table.selected == null) self.table.selected = 0;
     }
 
@@ -339,23 +388,37 @@ pub const DriverView = struct {
         self.setFocus(null);
     }
 
-    fn setFocus(self: *DriverView, idx: ?usize) void {
-        self.focused = idx;
+    fn setFocus(self: *DriverView, f: ?Focus) void {
+        self.focused = f;
         // Update panel focus
-        for (self.panels[0..self.panel_count], 0..) |*panel, i| {
-            panel.focused = (idx != null and idx.? == i);
+        for (&self.panels, 0..) |*panel, i| {
+            panel.focused = (f != null and @intFromEnum(f.?) == i);
         }
         // Update child focus
-        self.table.focused = (idx == 0 and self.depth == 0);
-        self.command_select.focused = (idx == 4);
-        self.send_button.focused = (idx == 5);
+        self.table.focused = (f == .main and self.depth == 0);
+        self.command_select.focused = (f == .command_select);
+        self.send_button.focused = (f == .send_button);
+        self.req_display.focused = (f == .request);
+        self.res_display.focused = (f == .response);
         if (self.depth == 1) {
-            if (idx == 0) {
+            if (f == .main) {
                 if (self.thermostat_view.list.focused == null) self.thermostat_view.list.focused = 0;
             } else {
                 self.thermostat_view.list.focused = null;
             }
         }
+    }
+
+    pub fn setRequest(self: *DriverView, text: []const u8) !void {
+        const new_text = try self.alloc.dupe(u8, text);
+        self.alloc.free(self.req_text);
+        self.req_text = new_text;
+    }
+
+    pub fn setResponse(self: *DriverView, text: []const u8) !void {
+        const new_text = try self.alloc.dupe(u8, text);
+        self.alloc.free(self.res_text);
+        self.res_text = new_text;
     }
 
     pub fn setFilter(self: *DriverView, filter: []const u8) void {

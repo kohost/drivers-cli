@@ -15,7 +15,18 @@ pub const Transport = struct {
         defer stream.close();
         const raw = self.sendCmd(stream, cmd) catch return null;
         defer self.alloc.free(raw);
-        return std.json.parseFromSlice(std.json.Value, self.alloc, raw, .{}) catch null;
+        var parsed = std.json.parseFromSlice(std.json.Value, self.alloc, raw, .{}) catch return null;
+
+        // If response includes data.data we return the inner
+        if (parsed.value == .object) {
+            if (parsed.value.object.get("data")) |outer_data| {
+                if (outer_data == .object and outer_data.object.contains("data")) {
+                    parsed.value = outer_data;
+                }
+            }
+        }
+
+        return parsed;
     }
 
     fn connect(self: *Transport) !std.net.Stream {

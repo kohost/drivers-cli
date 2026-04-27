@@ -7,6 +7,8 @@ pub const Message = union(enum) {
     cancel_input,
     view_changed: usize,
     render,
+    send_command,
+    command_changed: []const u8,
 };
 
 pub const MessageQueue = struct {

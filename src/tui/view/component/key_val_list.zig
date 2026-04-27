@@ -38,6 +38,15 @@ pub const KeyValList = struct {
         try self.rows.append(self.alloc, .{ .label = label, .value = value });
     }
 
+    pub fn get(self: *KeyValList, comptime T: type, label: []const u8) ?*T {
+        for (self.rows.items) |item| {
+            if (std.mem.eql(u8, item.label, label)) {
+                return @fieldParentPtr("interface", item.value);
+            }
+        }
+        return null;
+    }
+
     fn write(
         iface: *ComponentInterface,
         writer: *Writer,
@@ -81,7 +90,6 @@ pub const KeyValList = struct {
             current_row += 1;
         }
     }
-
 
     fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
         const self: *KeyValList = @fieldParentPtr("interface", iface);

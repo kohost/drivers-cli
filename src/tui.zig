@@ -8,26 +8,6 @@ const utils = @import("./tui/utils.zig");
 
 const TermSize = struct { cols: u16, rows: u16 };
 
-// const term = @import("./repl/readline.zig");
-// const connection = @import("./connection.zig");
-// const tabs = @import("./tui/components/tabs.zig");
-// const panels = @import("./tui/components/panels.zig");
-// const AppState = @import("./tui/state/state.zig").AppState;
-// const View = @import("./tui/views/view.zig").View;
-// const Mode = @import("./tui/types.zig").Mode;
-// const Rect = @import("./tui/types.zig").Rect;
-// const KeyResult = @import("./tui/types.zig").KeyResult;
-// const api_view = @import("./tui/views/api.zig");
-// const Notification = @import("./tui/components/notification.zig").Notification;
-// const amqp = @import("amqp");
-// const Zone = enum { menu, content };
-// const Cursor = struct {
-//     pub const save = "\x1b[s";
-//     pub const restore = "\x1b[u";
-//     pub const hide = "\x1b[?25l";
-//     pub const show = "\x1b[?25h";
-// };
-
 pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     // Setup terminal and defer giving it back on program exit
     const stdin = std.fs.File.stdin();
@@ -46,13 +26,6 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     var state = State.init(alloc);
     defer state.deinit();
 
-    // Network
-    var transport = Transport.init(alloc, cfg);
-    if (transport.fetch("GetDevices")) |parsed| {
-        defer parsed.deinit();
-        state.loadFromJson(parsed.value) catch {};
-    }
-
     // Canvas
     var canvas = try Canvas.init(alloc, stdout);
     defer canvas.deinit();
@@ -60,10 +33,17 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
     // App
     var app = try App.init(alloc, &state, size.cols, size.rows, cfg);
     defer app.deinit();
+
+    if (app.transport.fetch("GetDevices")) |parsed| {
+        defer parsed.deinit();
+        state.loadFromJson(parsed.value) catch {};
+    }
     app.layout.view = &app.view;
 
+    // Canvas
     try canvas.render(&app.layout);
 
+    // Posix
     const kq = try std.posix.kqueue();
     try handleEvents(kq, stdin, &size, &app, &canvas);
 }

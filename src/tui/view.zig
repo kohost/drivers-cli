@@ -57,4 +57,18 @@ pub const View = union(enum) {
             .none => "",
         };
     }
+
+    pub fn setRequest(self: *View, text: []const u8) !void {
+        switch (self.*) {
+            .driver => |*v| try v.setRequest(text),
+            .none => {},
+        }
+    }
+
+    pub fn setResponse(self: *View, text: []const u8) !void {
+        switch (self.*) {
+            .driver => |*v| try v.setResponse(text),
+            .none => {},
+        }
+    }
 };

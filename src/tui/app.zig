@@ -7,6 +7,7 @@ const DriverView = @import("view/driver.zig").DriverView;
 const MessageQueue = @import("./message_queue.zig").MessageQueue;
 const KeyResult = @import("view/component.zig").KeyResult;
 const Allocator = std.mem.Allocator;
+const Transport = @import("transport.zig").Transport;
 
 pub const App = struct {
     alloc: Allocator,
@@ -20,6 +21,8 @@ pub const App = struct {
     prev_focus: ?usize,
     input_prefix: u8,
     mq: MessageQueue,
+    pending_command: []const u8,
+    transport: Transport,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -49,6 +52,8 @@ pub const App = struct {
             .focused = 0,
             .prev_focus = 0,
             .input_prefix = 0,
+            .pending_command = "UpdateDevices",
+            .transport = Transport.init(alloc, cfg),
         };
     }
 
@@ -112,6 +117,7 @@ pub const App = struct {
         }
 
         for (self.mq.drain()) |msg| {
+            std.debug.print("mq: {s}\n", .{@tagName(msg)});
             switch (msg) {
                 .quit => return false,
                 .open_input => |prefix| {
@@ -138,6 +144,34 @@ pub const App = struct {
                         self.view.setFilter(self.layout.footer.input());
                     }
                 },
+                .send_command => blk: {
+                    var data_map = std.json.ObjectMap.init(self.alloc);
+                    defer data_map.deinit();
+
+                    var req_map = std.json.ObjectMap.init(self.alloc);
+                    defer req_map.deinit();
+
+                    req_map.put("command", .{ .string = self.pending_command }) catch break :blk;
+                    req_map.put("data", .{ .object = data_map }) catch break :blk;
+
+                    var aw: std.Io.Writer.Allocating = .init(self.alloc);
+                    defer aw.deinit();
+
+                    const root = std.json.Value{ .object = req_map };
+                    std.json.fmt(root, .{ .whitespace = .indent_2 }).format(&aw.writer) catch break :blk;
+
+                    self.view.setRequest(aw.written()) catch break :blk;
+
+                    if (self.transport.fetch(self.pending_command)) |parsed| {
+                        defer parsed.deinit();
+                        var res_aw: std.Io.Writer.Allocating = .init(self.alloc);
+                        defer res_aw.deinit();
+                        std.json.fmt(parsed.value, .{ .whitespace = .indent_2 }).format(&res_aw.writer) catch break :blk;
+                        self.view.setResponse(res_aw.written()) catch break :blk;
+                        _ = self.state.update(parsed.value);
+                    }
+                },
+                .command_changed => |name| self.pending_command = name,
             }
         }
 

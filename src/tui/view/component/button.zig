@@ -60,7 +60,8 @@ pub const Button = struct {
             'j' => {},
             'k' => {},
             '\r', '\n', 'l' => {
-                mq.post(.render);
+                mq.post(.send_command);
+                return .consumed;
             },
             0x1b, 'h' => {},
             else => return .ignored,
