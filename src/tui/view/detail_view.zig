@@ -30,7 +30,7 @@ pub const DetailView = union(enum) {
         };
     }
 
-    pub fn tickSpinner(self: *Self, stdout: std.fs.File) !void {
+    pub fn tickSpinner(self: *Self, stdout: std.Io.File) !void {
         switch (self.*) {
             .alarm => |*v| try v.security_switch.render(stdout, v.cursor == 0),
             .lock, .@"switch", .thermostat, .none => {},
@@ -44,7 +44,7 @@ pub const DetailView = union(enum) {
         };
     }
 
-    pub fn render(self: *Self, stdout: std.fs.File, focused: bool) !u16 {
+    pub fn render(self: *Self, stdout: std.Io.File, focused: bool) !u16 {
         return switch (self.*) {
             .alarm => |*v| v.render(stdout, focused),
             .lock => |*v| v.render(stdout, focused),
@@ -54,7 +54,7 @@ pub const DetailView = union(enum) {
         };
     }
 
-    pub fn handleKey(self: *Self, stdout: std.fs.File, key: u8) !KeyResult {
+    pub fn handleKey(self: *Self, stdout: std.Io.File, key: u8) !KeyResult {
         return switch (self.*) {
             .alarm => |*v| v.handleKey(stdout, key),
             .lock => |*v| v.handleKey(stdout, key),

@@ -78,7 +78,7 @@ pub const DevicesView = struct {
         };
     }
 
-    pub fn render(self: *Self, stdout: std.fs.File, has_focus: bool) !void {
+    pub fn render(self: *Self, stdout: std.Io.File, has_focus: bool) !void {
         self.has_focus = has_focus;
 
         var panel = Panel.init(self.area.x, self.area.y, self.area.width, self.visible_rows + 3);
@@ -116,7 +116,7 @@ pub const DevicesView = struct {
         return widths;
     }
 
-    fn writeHeader(self: *Self, stdout: std.fs.File) !void {
+    fn writeHeader(self: *Self, stdout: std.Io.File) !void {
         var pos_buf: [16]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 2 });
         try stdout.writeAll(pos);
@@ -140,14 +140,14 @@ pub const DevicesView = struct {
         try stdout.writeAll(Color.reset);
     }
 
-    fn writeRows(self: *Self, stdout: std.fs.File) !void {
+    fn writeRows(self: *Self, stdout: std.Io.File) !void {
         var i: u8 = 0;
         while (i < self.visible_rows) : (i += 1) {
             try self.writeRow(stdout, self.scroll_offset + i, i);
         }
     }
 
-    fn writeRow(self: *Self, stdout: std.fs.File, data_idx: u8, display_idx: u8) !void {
+    fn writeRow(self: *Self, stdout: std.Io.File, data_idx: u8, display_idx: u8) !void {
         var pos_buf: [16]u8 = undefined;
         var int_buf: [8]u8 = undefined;
         const Y_PAD: u8 = 2;
@@ -229,7 +229,7 @@ pub const DevicesView = struct {
         try stdout.writeAll(Color.reset);
     }
 
-    fn updateFocus(self: *Self, stdout: std.fs.File, idx: u8, is_focused: bool) !void {
+    fn updateFocus(self: *Self, stdout: std.Io.File, idx: u8, is_focused: bool) !void {
         if (idx < self.scroll_offset or idx >= self.scroll_offset + self.visible_rows) return;
         var pos_buf: [16]u8 = undefined;
         const yPos = self.area.y + (idx - self.scroll_offset) + 2;
@@ -260,7 +260,7 @@ pub const DevicesView = struct {
         return false;
     }
 
-    fn selectItem(self: *Self, stdout: std.fs.File) !void {
+    fn selectItem(self: *Self, stdout: std.Io.File) !void {
         if (self.cursor >= self.state.devices.items.len) return;
         const device = self.state.devices.items[self.cursor];
         const id = device.id();
@@ -276,7 +276,7 @@ pub const DevicesView = struct {
         }
     }
 
-    fn deselectItem(self: *Self, stdout: std.fs.File) !void {
+    fn deselectItem(self: *Self, stdout: std.Io.File) !void {
         if (self.cursor >= self.state.devices.items.len) return;
         const device = self.state.devices.items[self.cursor];
         const id = device.id();
@@ -293,7 +293,7 @@ pub const DevicesView = struct {
         }
     }
 
-    pub fn tickSpinner(self: *Self, stdout: std.fs.File) !void {
+    pub fn tickSpinner(self: *Self, stdout: std.Io.File) !void {
         try self.detail.tickSpinner(stdout);
     }
 
@@ -301,7 +301,7 @@ pub const DevicesView = struct {
         return self.detail.isAnimating();
     }
 
-    pub fn handleKey(self: *Self, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleKey(self: *Self, stdout: std.Io.File, c: u8) !KeyResult {
         if (self.detail_focus) return try self.handleDetailKey(stdout, c);
 
         const now = std.time.milliTimestamp();
@@ -418,7 +418,7 @@ pub const DevicesView = struct {
         return result;
     }
 
-    pub fn handleDetailKey(self: *Self, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleDetailKey(self: *Self, stdout: std.Io.File, c: u8) !KeyResult {
         if (c == 0x1b and !self.detail.hasOpenSelect()) {
             self.detail_focus = false;
             self.detail = .none;
@@ -442,13 +442,13 @@ pub const DevicesView = struct {
         return &self.state.devices.items[self.cursor];
     }
 
-    fn renderDeviceDetail(self: *Self, stdout: std.fs.File, device: *Device, x: u16, y: u16, width: u16) !u16 {
+    fn renderDeviceDetail(self: *Self, stdout: std.Io.File, device: *Device, x: u16, y: u16, width: u16) !u16 {
         const area = Rect{ .x = x, .y = y, .width = width, .height = 4 };
         var detail = DetailView.init(device, area, self.cols, self.rows);
         return try detail.render(stdout, false);
     }
 
-    fn renderDetail(self: *Self, stdout: std.fs.File) !void {
+    fn renderDetail(self: *Self, stdout: std.Io.File) !void {
         var y = self.area.y + self.visible_rows + 4;
 
         for (self.selected[0..self.selected_len]) |device_id| {
@@ -467,7 +467,7 @@ pub const DevicesView = struct {
         }
     }
 
-    fn clearDetail(self: *Self, stdout: std.fs.File) !void {
+    fn clearDetail(self: *Self, stdout: std.Io.File) !void {
         var pos_buf: [32]u8 = undefined;
         const detail_y = self.area.y + self.visible_rows + 4;
         const total_rows: u16 = (@as(u16, self.selected_len) + 1) * 4;

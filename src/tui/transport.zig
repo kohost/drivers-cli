@@ -5,15 +5,16 @@ const Allocator = std.mem.Allocator;
 pub const Transport = struct {
     alloc: Allocator,
     cfg: Config,
+    io: std.Io,
 
-    pub fn init(alloc: Allocator, cfg: Config) Transport {
-        return .{ .alloc = alloc, .cfg = cfg };
+    pub fn init(alloc: Allocator, cfg: Config, io: std.Io) Transport {
+        return .{ .alloc = alloc, .cfg = cfg, .io = io };
     }
 
-    pub fn fetch(self: *Transport, cmd: []const u8) ?std.json.Parsed(std.json.Value) {
+    pub fn fetch(self: *Transport, bytes: []const u8) ?std.json.Parsed(std.json.Value) {
         const stream = self.connect() catch return null;
-        defer stream.close();
-        const raw = self.sendCmd(stream, cmd) catch return null;
+        defer stream.close(self.io);
+        const raw = self.sendCmd(stream, bytes) catch return null;
         defer self.alloc.free(raw);
         var parsed = std.json.parseFromSlice(std.json.Value, self.alloc, raw, .{}) catch return null;
 
@@ -29,24 +30,35 @@ pub const Transport = struct {
         return parsed;
     }
 
-    fn connect(self: *Transport) !std.net.Stream {
-        const address = try std.net.Address.parseIp(self.cfg.host, self.cfg.port);
-        return try std.net.tcpConnectToAddress(address);
+    fn connect(self: *Transport) !std.Io.net.Stream {
+        const address = try std.Io.net.IpAddress.parseIp4(self.cfg.host, self.cfg.port);
+        return address.connect(self.io, .{ .mode = .stream });
     }
 
-    fn sendCmd(self: *Transport, stream: std.net.Stream, cmd: []const u8) ![]const u8 {
+    fn sendCmd(self: *Transport, stream: std.Io.net.Stream, cmd: []const u8) ![]const u8 {
         const req = try self.buildRequest(cmd);
         defer self.alloc.free(req);
-        _ = try stream.write(req);
 
-        var res: std.ArrayListUnmanaged(u8) = .empty;
+        var write_buf: [4096]u8 = undefined;
+        var w = stream.writer(self.io, &write_buf);
+        try w.interface.writeAll(req);
+        try w.interface.flush();
+
+        var read_buf: [4096]u8 = undefined;
+        var r = stream.reader(self.io, &read_buf);
+
+        var res: std.ArrayList(u8) = .empty;
         errdefer res.deinit(self.alloc);
 
-        var buf: [4096]u8 = undefined;
+        var chunk: [4096]u8 = undefined;
         while (true) {
-            const bytes_read = try stream.read(&buf);
-            if (bytes_read == 0) break;
-            try res.appendSlice(self.alloc, buf[0..bytes_read]);
+            var bufs: [1][]u8 = .{&chunk};
+            const bytes_read = r.interface.readVec(&bufs) catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return err,
+            };
+            if (bytes_read == 0) continue;
+            try res.appendSlice(self.alloc, chunk[0..bytes_read]);
             if (isCompleteJson(res.items)) break;
         }
 
@@ -54,11 +66,14 @@ pub const Transport = struct {
     }
 
     fn buildRequest(self: *Transport, cmd: []const u8) ![]const u8 {
-        var req_map = std.json.ObjectMap.init(self.alloc);
-        defer req_map.deinit();
+        var req_map: std.json.ObjectMap = .empty;
+        defer req_map.deinit(self.alloc);
 
-        try req_map.put("command", .{ .string = cmd });
-        try req_map.put("data", .{ .object = std.json.ObjectMap.init(self.alloc) });
+        var data_map: std.json.ObjectMap = .empty;
+        defer data_map.deinit(self.alloc);
+
+        try req_map.put(self.alloc, "command", .{ .string = cmd });
+        try req_map.put(self.alloc, "data", .{ .object = data_map });
 
         var aw: std.Io.Writer.Allocating = .init(self.alloc);
         defer aw.deinit();

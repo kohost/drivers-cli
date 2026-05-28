@@ -6,18 +6,21 @@ const readline = @import("./repl/readline.zig");
 const commands = @import("./commands.zig");
 const Config = @import("./config.zig").Config;
 
-pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
+pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
     // Setup terminal and defer giving it back on program exit
-    const stdin = std.fs.File.stdin();
-    const stdout = std.fs.File.stdout();
+    const stdin = std.Io.File.stdin();
+    const stdout = std.Io.File.stdout();
     const original = try setup();
     defer std.posix.tcsetattr(stdin.handle, .FLUSH, original) catch {};
+
+    // Bar cursor (blinking line)
+    try stdout.writeStreamingAll(io, "\x1b[5 q");
 
     // Our buffer for user input
     var input_buf: [1024]u8 = undefined;
 
     // Command history list
-    var history_list: std.ArrayList([]const u8) = .{};
+    var history_list: std.ArrayList([]const u8) = .empty;
     defer {
         for (history_list.items) |item| {
             alloc.free(item);
@@ -31,10 +34,10 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
 
     // Main loop
     while (true) {
-        try stdout.writeAll(prompt);
+        try stdout.writeStreamingAll(io, prompt);
 
         // Get user input
-        const input = try readline.readUserInput(&input_buf, &history_list, prompt);
+        const input = try readline.readUserInput(io, &input_buf, &history_list, prompt);
         try updateHistory(&history_list, alloc, input);
 
         if (input.len == 0) continue;
@@ -48,7 +51,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
                 }
             }.cmp);
             var buf: [4096]u8 = undefined;
-            var w = stdout.writer(&buf);
+            var w = stdout.writer(io, &buf);
             try w.interface.print("\n{s:<20} {s:<8} {s}\n", .{ "Command", "Alias", "Description" });
             try w.interface.print("{s}\n", .{"-" ** 50});
             for (sorted) |c| {
@@ -59,7 +62,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
             continue;
         }
         if (std.mem.eql(u8, input, "version")) {
-            try stdout.writeAll(build_options.version);
+            try stdout.writeStreamingAll(io, build_options.version);
             continue;
         }
 
@@ -68,19 +71,15 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator) !void {
         const cmd = std.mem.trim(u8, parts.first(), " ");
         const filter = if (parts.next()) |f| std.mem.trim(u8, f, " ") else null;
 
-        try executeCommand(cfg, alloc, stdout, cmd, filter);
+        try executeCommand(cfg, alloc, io, stdout, cmd, filter);
     }
 }
 
 /// Configures the terminal for raw input and returns the original settings for
 /// restoration.
 fn setup() !std.posix.termios {
-    // Bar cursor (blinking line)
-    const stdout = std.fs.File.stdout();
-    try stdout.writeAll("\x1b[5 q");
-
     // Get current term settings and give them back on exit
-    const stdin = std.fs.File.stdin();
+    const stdin = std.Io.File.stdin();
     const original = try std.posix.tcgetattr(stdin.handle);
 
     // Make a copy to modify
@@ -116,30 +115,31 @@ fn updateHistory(history: *std.ArrayList([]const u8), alloc: std.mem.Allocator, 
 /// Optionally filters the response using a pipe expression.
 /// Disconnects and clean up when done.
 fn executeCommand(
-    cfg: Config, //
+    cfg: Config,
     alloc: std.mem.Allocator,
-    stdout: std.fs.File,
+    io: std.Io,
+    stdout: std.Io.File,
     cmd: []const u8,
     filter: ?[]const u8,
 ) !void {
-    const stream = connection.connect(cfg.host, cfg.port) catch |err| {
-        try stdout.writeAll(@errorName(err));
-        try stdout.writeAll("\n");
+    const stream = connection.connect(io, cfg.host, cfg.port) catch |err| {
+        try stdout.writeStreamingAll(io, @errorName(err));
+        try stdout.writeStreamingAll(io, "\n");
         return;
     };
-    defer stream.close();
+    defer stream.close(io);
 
-    const data = connection.sendCmd(stream, alloc, cmd) catch |err| {
-        try stdout.writeAll(@errorName(err));
-        try stdout.writeAll("\n");
+    const data = connection.sendCmd(io, stream, alloc, cmd) catch |err| {
+        try stdout.writeStreamingAll(io, @errorName(err));
+        try stdout.writeStreamingAll(io, "\n");
         return;
     };
     defer alloc.free(data);
 
     if (filter) |f| {
         const filtered = parse.applyFilter(alloc, data, f) catch |err| {
-            try stdout.writeAll(@errorName(err));
-            try stdout.writeAll("\n");
+            try stdout.writeStreamingAll(io, @errorName(err));
+            try stdout.writeStreamingAll(io, "\n");
             return;
         };
         defer alloc.free(filtered);
@@ -149,13 +149,13 @@ fn executeCommand(
             if (line.len == 0) continue;
             const formatted = try parse.formatJSON(alloc, line);
             defer alloc.free(formatted);
-            try stdout.writeAll(formatted);
-            try stdout.writeAll("\n");
+            try stdout.writeStreamingAll(io, formatted);
+            try stdout.writeStreamingAll(io, "\n");
         }
     } else {
         const parsed = try parse.formatJSON(alloc, data);
         defer alloc.free(parsed);
-        try stdout.writeAll(parsed);
-        try stdout.writeAll("\n");
+        try stdout.writeStreamingAll(io, parsed);
+        try stdout.writeStreamingAll(io, "\n");
     }
 }

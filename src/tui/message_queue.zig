@@ -9,6 +9,10 @@ pub const Message = union(enum) {
     render,
     send_command,
     command_changed: []const u8,
+    data_changed: struct {
+        key: []const u8,
+        value: std.json.Value,
+    },
 };
 
 pub const MessageQueue = struct {

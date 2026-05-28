@@ -18,7 +18,7 @@ pub const Layout = struct {
                 .x = 2,
                 .width = cols,
                 .title = "🌸 Kohost",
-                .subtitle = std.mem.trimRight(
+                .subtitle = std.mem.trimEnd(
                     u8,
                     @import("build_options").version,
                     "\n\r",

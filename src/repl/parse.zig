@@ -204,8 +204,8 @@ pub fn buildRequest(alloc: std.mem.Allocator, input: []const u8) ![]const u8 {
     const cmd = input[0..cmd_end];
 
     // Build data obj
-    var data_map = std.json.ObjectMap.init(alloc);
-    defer data_map.deinit();
+    var data_map: std.json.ObjectMap = .empty;
+    defer data_map.deinit(alloc);
 
     var parsed: ?std.json.Parsed(std.json.Value) = null;
     defer if (parsed) |*p| p.deinit();
@@ -243,31 +243,31 @@ pub fn buildRequest(alloc: std.mem.Allocator, input: []const u8) ![]const u8 {
         if (val_str[0] == '[' or val_str[0] == '{') {
             // Parse as JSON (array or object)
             parsed = try std.json.parseFromSlice(std.json.Value, alloc, val_str, .{});
-            try data_map.put(key, parsed.?.value);
+            try data_map.put(alloc, key, parsed.?.value);
         } else if (is_string) {
             // Quoted means always a string, so no type detection
-            try data_map.put(key, .{ .string = val_str });
+            try data_map.put(alloc, key, .{ .string = val_str });
         } else if (std.mem.eql(u8, val_str, "true")) {
-            try data_map.put(key, .{ .bool = true });
+            try data_map.put(alloc, key, .{ .bool = true });
         } else if (std.mem.eql(u8, val_str, "false")) {
-            try data_map.put(key, .{ .bool = false });
+            try data_map.put(alloc, key, .{ .bool = false });
         } else if (std.fmt.parseInt(i64, val_str, 10)) |num| {
-            try data_map.put(key, .{ .integer = num });
+            try data_map.put(alloc, key, .{ .integer = num });
         } else |_| {
             if (std.fmt.parseFloat(f64, val_str)) |num| {
-                try data_map.put(key, .{ .float = num });
+                try data_map.put(alloc, key, .{ .float = num });
             } else |_| {
-                try data_map.put(key, .{ .string = val_str });
+                try data_map.put(alloc, key, .{ .string = val_str });
             }
         }
     }
 
     // Build complete request obj
-    var req_map = std.json.ObjectMap.init(alloc);
-    defer req_map.deinit();
+    var req_map: std.json.ObjectMap = .empty;
+    defer req_map.deinit(alloc);
 
-    try req_map.put("command", .{ .string = cmd });
-    try req_map.put("data", .{ .object = data_map });
+    try req_map.put(alloc, "command", .{ .string = cmd });
+    try req_map.put(alloc, "data", .{ .object = data_map });
 
     const req_val = std.json.Value{ .object = req_map };
 

@@ -15,7 +15,8 @@ pub const Cursor = struct {
 };
 
 pub const KeyResult = enum {
-    consumed,
+    consumed, // generic handled
+    committed, // user finalized an editable value (e.g. Enter in TextInput)
     ignored,
     focus_next,
     focus_prev,

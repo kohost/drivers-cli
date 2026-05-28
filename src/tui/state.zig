@@ -2,7 +2,7 @@ const std = @import("std");
 const Device = @import("state/models/device.zig").Device;
 
 pub const State = struct {
-    devices: std.ArrayListUnmanaged(Device),
+    devices: std.ArrayList(Device),
     alloc: std.mem.Allocator,
     system: ?struct {
         manufacturer: []const u8,
@@ -15,7 +15,7 @@ pub const State = struct {
 
     pub fn init(alloc: std.mem.Allocator) State {
         return .{
-            .devices = .{},
+            .devices = .empty,
             .alloc = alloc,
             .system = null,
         };

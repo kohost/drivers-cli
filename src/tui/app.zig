@@ -21,7 +21,8 @@ pub const App = struct {
     prev_focus: ?usize,
     input_prefix: u8,
     mq: MessageQueue,
-    pending_command: []const u8,
+    // pending_command: []const u8,
+    pending_command: std.json.ObjectMap = .empty,
     transport: Transport,
 
     pub fn init(
@@ -30,11 +31,16 @@ pub const App = struct {
         cols: u16,
         rows: u16,
         cfg: Config,
+        io: std.Io,
     ) !App {
         const x = 1;
         const y = 5;
         const width = cols;
         const height = rows - 6;
+        var pending_command: std.json.ObjectMap = .empty;
+        try pending_command.put(alloc, "command", .{ .string = "UpdateDevices" });
+        try pending_command.put(alloc, "data", .{ .object = .empty });
+
         return .{
             .alloc = alloc,
             .state = state,
@@ -52,13 +58,15 @@ pub const App = struct {
             .focused = 0,
             .prev_focus = 0,
             .input_prefix = 0,
-            .pending_command = "UpdateDevices",
-            .transport = Transport.init(alloc, cfg),
+            // .pending_command = "UpdateDevices",
+            .pending_command = pending_command,
+            .transport = Transport.init(alloc, cfg, io),
         };
     }
 
     pub fn deinit(self: *App) void {
         self.view.deinit();
+        self.pending_command.deinit(self.alloc);
     }
 
     pub fn resize(self: *App, cols: u16, rows: u16) !void {
@@ -117,7 +125,7 @@ pub const App = struct {
         }
 
         for (self.mq.drain()) |msg| {
-            std.debug.print("mq: {s}\n", .{@tagName(msg)});
+            std.debug.print("App:handleKey:mq: {s}\n", .{@tagName(msg)});
             switch (msg) {
                 .quit => return false,
                 .open_input => |prefix| {
@@ -144,34 +152,14 @@ pub const App = struct {
                         self.view.setFilter(self.layout.footer.input());
                     }
                 },
-                .send_command => blk: {
-                    var data_map = std.json.ObjectMap.init(self.alloc);
-                    defer data_map.deinit();
-
-                    var req_map = std.json.ObjectMap.init(self.alloc);
-                    defer req_map.deinit();
-
-                    req_map.put("command", .{ .string = self.pending_command }) catch break :blk;
-                    req_map.put("data", .{ .object = data_map }) catch break :blk;
-
-                    var aw: std.Io.Writer.Allocating = .init(self.alloc);
-                    defer aw.deinit();
-
-                    const root = std.json.Value{ .object = req_map };
-                    std.json.fmt(root, .{ .whitespace = .indent_2 }).format(&aw.writer) catch break :blk;
-
-                    self.view.setRequest(aw.written()) catch break :blk;
-
-                    if (self.transport.fetch(self.pending_command)) |parsed| {
-                        defer parsed.deinit();
-                        var res_aw: std.Io.Writer.Allocating = .init(self.alloc);
-                        defer res_aw.deinit();
-                        std.json.fmt(parsed.value, .{ .whitespace = .indent_2 }).format(&res_aw.writer) catch break :blk;
-                        self.view.setResponse(res_aw.written()) catch break :blk;
-                        _ = self.state.update(parsed.value);
-                    }
+                // TODO: Silently swallowing errors with catch{} will want to surface
+                .send_command => self.executeCommand() catch {},
+                .command_changed => |name| self.pending_command.put(self.alloc, "command", .{ .string = name }) catch {},
+                .data_changed => |data| {
+                    self.pending_command
+                        .getPtr("data").?.object
+                        .put(self.alloc, data.key, data.value) catch {};
                 },
-                .command_changed => |name| self.pending_command = name,
             }
         }
 
@@ -206,6 +194,33 @@ pub const App = struct {
                 }
             },
             else => self.view = .none,
+        }
+    }
+
+    fn executeCommand(self: *App) !void {
+        var req_wa: std.Io.Writer.Allocating = std.Io.Writer.Allocating.init(self.alloc);
+        defer req_wa.deinit();
+
+        const root: std.json.Value = .{ .object = self.pending_command };
+        const formatter = std.json.fmt(root, .{ .whitespace = .indent_2 });
+        try formatter.format(&req_wa.writer);
+
+        try self.view.setRequest(req_wa.written());
+
+        // Reformat to send down the wire
+        req_wa.clearRetainingCapacity();
+        try std.json.fmt(root, .{}).format(&req_wa.writer);
+
+        if (self.transport.fetch(req_wa.written())) |parsed| {
+            defer parsed.deinit();
+            var res_wa: std.Io.Writer.Allocating = std.Io.Writer.Allocating.init(self.alloc);
+            defer res_wa.deinit();
+
+            const res_formatter = std.json.fmt(parsed.value, .{ .whitespace = .indent_2 });
+            try res_formatter.format(&res_wa.writer);
+
+            try self.view.setResponse(res_wa.written());
+            _ = self.state.update(parsed.value);
         }
     }
 };

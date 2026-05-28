@@ -12,7 +12,7 @@ pub const Select = struct {
         return .{ .x = x, .y = y, .labels = labels };
     }
 
-    pub fn render(self: *Select, stdout: std.fs.File, selected: usize, focused: bool) !void {
+    pub fn render(self: *Select, stdout: std.Io.File, selected: usize, focused: bool) !void {
         var pos_buf: [32]u8 = undefined;
 
         if (!self.open) {
@@ -53,7 +53,7 @@ pub const Select = struct {
         }
     }
 
-    pub fn close(self: *Select, stdout: std.fs.File) !void {
+    pub fn close(self: *Select, stdout: std.Io.File) !void {
         var pos_buf: [32]u8 = undefined;
         for (0..self.labels.len) |i| {
             const row = self.y + @as(u16, @intCast(i));

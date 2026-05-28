@@ -10,26 +10,19 @@ pub const std_options = std.Options{
     .logFn = myLog,
 };
 
-pub fn main() !void {
-    // Get allocator
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
-
-    // Parse command line args
-    const args = try std.process.argsAlloc(alloc);
-    defer std.process.argsFree(alloc, args);
+pub fn main(init: std.process.Init) !void {
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
     const cfg = parseArgs(args);
 
     if (cfg.tui) {
-        try tui.run(cfg, alloc);
+        try tui.run(cfg, init.gpa, init.io);
     } else {
-        try repl.run(cfg, alloc);
+        try repl.run(cfg, init.gpa, init.io);
     }
 }
 
 /// Parses command-line args into a Config.
-fn parseArgs(args: [][:0]u8) Config {
+fn parseArgs(args: []const [:0]const u8) Config {
     var use_tui = false;
     var host: []const u8 = "127.0.0.1";
     var port: u16 = 16483;

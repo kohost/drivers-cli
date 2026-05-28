@@ -49,7 +49,7 @@ pub const Table = struct {
     interface: ComponentInterface,
     alloc: std.mem.Allocator,
     headers: []const Cell,
-    rows: std.ArrayListUnmanaged(Row),
+    rows: std.ArrayList(Row),
     selected: ?usize,
     focused: bool,
     scroll_offset: u16,

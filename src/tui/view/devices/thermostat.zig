@@ -159,7 +159,20 @@ pub const ThermostatView = struct {
 
     fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
         const self: *ThermostatView = @fieldParentPtr("interface", iface);
-        return self.list.interface.handleKey(key, mq);
+        const result = self.list.interface.handleKey(key, mq);
+        if (result == .committed) {
+            const idx = self.list.focused orelse return .consumed;
+            const row = self.list.rows.items[idx];
+            const ti: *TextInput = @fieldParentPtr("interface", row.value);
+            const owned = self.arena
+                .allocator()
+                .dupe(u8, ti.buf[0..ti.buf_len]) catch return .consumed;
+            mq.post(.{ .data_changed = .{
+                .key = row.label,
+                .value = .{ .string = owned },
+            } });
+        }
+        return result;
     }
 
     fn addDisplay(self: *ThermostatView, label: []const u8, source: []const u8) !void {

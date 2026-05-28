@@ -9,7 +9,7 @@ pub const Panel = struct {
         return .{ .rect = .{ .x = x, .y = y, .width = width, .height = height } };
     }
 
-    pub fn draw(self: Panel, stdout: std.fs.File, labels: [4]?[]const u8) !void {
+    pub fn draw(self: Panel, stdout: std.Io.File, labels: [4]?[]const u8) !void {
         var pos_buf: [32]u8 = undefined;
 
         // Top border
@@ -116,7 +116,7 @@ pub const Panel = struct {
         try stdout.writeAll(Color.reset);
     }
 
-    pub fn clear(self: Panel, stdout: std.fs.File) !void {
+    pub fn clear(self: Panel, stdout: std.Io.File) !void {
         var pos_buf: [32]u8 = undefined;
         var row: u16 = 0;
         while (row < self.rect.height) : (row += 1) {

@@ -27,7 +27,7 @@ pub const StateSwitch = struct {
         return self.states[self.current].in_progress;
     }
 
-    pub fn render(self: *StateSwitch, stdout: std.fs.File, focused: bool) !void {
+    pub fn render(self: *StateSwitch, stdout: std.Io.File, focused: bool) !void {
         var pos_buf: [32]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.y, self.x });
         try stdout.writeAll(pos);

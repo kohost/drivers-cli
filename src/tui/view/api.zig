@@ -15,7 +15,7 @@ pub const ApiView = struct {
         _ = self;
     }
 
-    pub fn render(self: *Self, stdout: std.fs.File, has_focus: bool) !void {
+    pub fn render(self: *Self, stdout: std.Io.File, has_focus: bool) !void {
         _ = has_focus;
         var pos_buf: [32]u8 = undefined;
         var row: u16 = 0;
@@ -26,7 +26,7 @@ pub const ApiView = struct {
         }
     }
 
-    pub fn handleKey(self: *Self, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleKey(self: *Self, stdout: std.Io.File, c: u8) !KeyResult {
         _ = self;
         _ = stdout;
         _ = c;

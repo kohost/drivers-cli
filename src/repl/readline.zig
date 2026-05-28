@@ -40,31 +40,32 @@ const keymap = [_]KeyBinding{
 };
 
 fn showSuggestion(
-    stdout: std.fs.File, //
+    stdout: std.Io.File,
+    io: std.Io,
     buf: []const u8,
     input_len: usize,
     cursor: usize,
     prefix: []const u8,
 ) !void {
     if (cursor != input_len) return;
-    try stdout.writeAll("\x1b[K");
+    try stdout.writeStreamingAll(io, "\x1b[K");
 
     const match = commands.findMatch(buf[0..input_len]) orelse return;
 
     if (match.len > input_len) {
         // Partial match — show remaining chars in dim
-        try stdout.writeAll("\x1b[90m");
-        try stdout.writeAll(match[input_len..]);
-        try stdout.writeAll("\x1b[0m");
-        try setCursor(stdout, prefix.len + cursor);
+        try stdout.writeStreamingAll(io, "\x1b[90m");
+        try stdout.writeStreamingAll(io, match[input_len..]);
+        try stdout.writeStreamingAll(io, "\x1b[0m");
+        try setCursor(stdout, io, prefix.len + cursor);
     } else if (input_len == match.len) {
         // Exact match — show args hint if available
         const cmd = findCommand(match) orelse return;
         const args = cmd.args orelse return;
-        try stdout.writeAll("\x1b[90m ");
-        try stdout.writeAll(args);
-        try stdout.writeAll("\x1b[0m");
-        try setCursor(stdout, prefix.len + cursor);
+        try stdout.writeStreamingAll(io, "\x1b[90m ");
+        try stdout.writeStreamingAll(io, args);
+        try stdout.writeStreamingAll(io, "\x1b[0m");
+        try setCursor(stdout, io, prefix.len + cursor);
     }
 }
 
@@ -94,12 +95,13 @@ fn findArgSlots(str: []const u8) [8]?usize {
 }
 
 pub fn readUserInput(
+    io: std.Io,
     buf: *[1024]u8, //
     history: *std.ArrayList([]const u8),
     prefix: []const u8,
 ) ![]const u8 {
-    const stdin = std.fs.File.stdin();
-    const stdout = std.fs.File.stdout();
+    const stdin = std.Io.File.stdin();
+    const stdout = std.Io.File.stdout();
 
     // Length of text in buffer
     var input_len: usize = 0;
@@ -115,7 +117,7 @@ pub fn readUserInput(
     var last_was_esc = false;
 
     while (true) {
-        const action = try readKey(stdin);
+        const action = try readKey(stdin, io);
 
         // Any other key resets
         if (action != .esc) last_was_esc = false;
@@ -135,17 +137,17 @@ pub fn readUserInput(
                     cursor -= 1;
 
                     // Move cursor left by 1
-                    try stdout.writeAll("\x08");
+                    try stdout.writeStreamingAll(io, "\x08");
                     // Print everything from cursor to end
-                    try stdout.writeAll(buf[cursor..input_len]);
+                    try stdout.writeStreamingAll(io, buf[cursor..input_len]);
                     // Overright last char with a space and jump back 1
-                    try stdout.writeAll(" \x1b[D");
+                    try stdout.writeStreamingAll(io, " \x1b[D");
                     // Reposition cursor
                     if (input_len > cursor) {
-                        try setCursor(stdout, prefix.len + cursor);
+                        try setCursor(stdout, io, prefix.len + cursor);
                     }
                 }
-                try showSuggestion(stdout, buf, input_len, cursor, prefix);
+                try showSuggestion(stdout, io, buf, input_len, cursor, prefix);
             },
             .char => |c| {
                 // If we are in the middle of a string shift everything over
@@ -163,50 +165,50 @@ pub fn readUserInput(
                 cursor += 1;
 
                 // Write to terminal
-                try stdout.writeAll(buf[cursor - 1 .. input_len]);
+                try stdout.writeStreamingAll(io, buf[cursor - 1 .. input_len]);
 
                 // Move cursor back if necessary (user typed mid string)
                 if (input_len > cursor) {
-                    try setCursor(stdout, prefix.len + cursor);
+                    try setCursor(stdout, io, prefix.len + cursor);
                 }
 
                 // Handle alias expansion
                 if (expandAlias(buf, &input_len, &cursor)) {
-                    try clearLine(stdout, prefix);
-                    try stdout.writeAll(buf[0..input_len]);
+                    try clearLine(stdout, io, prefix);
+                    try stdout.writeStreamingAll(io, buf[0..input_len]);
                     if (input_len > cursor) {
-                        try setCursor(stdout, prefix.len + cursor);
+                        try setCursor(stdout, io, prefix.len + cursor);
                     }
                 }
 
-                try showSuggestion(stdout, buf, input_len, cursor, prefix);
+                try showSuggestion(stdout, io, buf, input_len, cursor, prefix);
             },
             .ctrl_a => {
                 cursor = 0;
-                try setCursor(stdout, prefix.len);
+                try setCursor(stdout, io, prefix.len);
             },
             .down => {
                 if (history_idx) |idx| {
                     if (idx < history.items.len - 1) {
                         history_idx = idx + 1;
-                        try clearLine(stdout, prefix);
+                        try clearLine(stdout, io, prefix);
 
                         const command = history.items[history_idx.?];
                         @memcpy(buf[0..command.len], command);
                         input_len = command.len;
-                        try stdout.writeAll(buf[0..input_len]);
+                        try stdout.writeStreamingAll(io, buf[0..input_len]);
                         cursor = input_len;
                     } else {
                         // At end of history, clear line
                         history_idx = null;
                         input_len = 0;
                         cursor = 0;
-                        try clearLine(stdout, prefix);
+                        try clearLine(stdout, io, prefix);
                     }
                 }
             },
             .enter => {
-                try stdout.writeAll("\n");
+                try stdout.writeStreamingAll(io, "\n");
                 history_idx = null;
                 return buf[0..input_len];
             },
@@ -214,7 +216,7 @@ pub fn readUserInput(
                 if (last_was_esc) {
                     input_len = 0;
                     cursor = 0;
-                    try clearLine(stdout, prefix);
+                    try clearLine(stdout, io, prefix);
                     last_was_esc = false;
                 } else {
                     last_was_esc = true;
@@ -224,13 +226,13 @@ pub fn readUserInput(
             .left => {
                 if (cursor > 0) {
                     cursor -= 1;
-                    try stdout.writeAll("\x1b[D");
+                    try stdout.writeStreamingAll(io, "\x1b[D");
                 }
             },
             .right => {
                 if (cursor < input_len) {
                     cursor += 1;
-                    try stdout.writeAll("\x1b[C");
+                    try stdout.writeStreamingAll(io, "\x1b[C");
                 }
             },
             .tab => {
@@ -270,13 +272,13 @@ pub fn readUserInput(
                         }
                     }
 
-                    try clearLine(stdout, prefix);
-                    try stdout.writeAll(buf[0..input_len]);
+                    try clearLine(stdout, io, prefix);
+                    try stdout.writeStreamingAll(io, buf[0..input_len]);
                     if (input_len > cursor) {
-                        try setCursor(stdout, prefix.len + cursor);
+                        try setCursor(stdout, io, prefix.len + cursor);
                     }
                 }
-                try showSuggestion(stdout, buf, input_len, cursor, prefix);
+                try showSuggestion(stdout, io, buf, input_len, cursor, prefix);
             },
             .up => {
                 if (history.items.len > 0) {
@@ -286,7 +288,7 @@ pub fn readUserInput(
                         history_idx = history.items.len - 1;
                     }
 
-                    try clearLine(stdout, prefix);
+                    try clearLine(stdout, io, prefix);
 
                     // Copy history command to buffer
                     const command = history.items[history_idx.?];
@@ -294,7 +296,7 @@ pub fn readUserInput(
                     input_len = command.len;
 
                     // Redraw command
-                    try stdout.writeAll(buf[0..input_len]);
+                    try stdout.writeStreamingAll(io, buf[0..input_len]);
                     cursor = input_len;
                 }
             },
@@ -320,10 +322,10 @@ pub fn readUserInput(
                     input_len -= chars_to_del;
                     cursor = new_cursor;
 
-                    try clearLine(stdout, prefix);
-                    try stdout.writeAll(buf[0..input_len]);
-                    try stdout.writeAll("\x1b[K");
-                    try setCursor(stdout, prefix.len + cursor);
+                    try clearLine(stdout, io, prefix);
+                    try stdout.writeStreamingAll(io, buf[0..input_len]);
+                    try stdout.writeStreamingAll(io, "\x1b[K");
+                    try setCursor(stdout, io, prefix.len + cursor);
                 }
             },
             .word_left => {
@@ -335,7 +337,7 @@ pub fn readUserInput(
                 while (cursor > 0 and buf[cursor - 1] != ' ') {
                     cursor -= 1;
                 }
-                try setCursor(stdout, prefix.len + cursor);
+                try setCursor(stdout, io, prefix.len + cursor);
             },
             .word_right => {
                 // Skip forward over spaces
@@ -346,25 +348,37 @@ pub fn readUserInput(
                 while (cursor < input_len and buf[cursor] != ' ') {
                     cursor += 1;
                 }
-                try setCursor(stdout, prefix.len + cursor);
+                try setCursor(stdout, io, prefix.len + cursor);
             },
         }
     }
 }
 
-fn readKey(stdin: std.fs.File) !Action {
+fn readKey(stdin: std.Io.File, io: std.Io) !Action {
     var buf: [3]u8 = undefined;
     var len: usize = 0;
 
-    if (try stdin.read(buf[0..1]) == 0) return .none;
+    const n = stdin.readStreaming(io, &.{buf[0..1]}) catch |err| switch (err) {
+        error.EndOfStream => return .none,
+        else => return err,
+    };
+    if (n == 0) return .none;
     len = 1;
 
     // Get buffer length
     if (buf[0] == 0x1B) {
-        if (try stdin.read(buf[1..2]) == 1) {
+        const n1 = stdin.readStreaming(io, &.{buf[1..2]}) catch |err| switch (err) {
+            error.EndOfStream => 0,
+            else => return err,
+        };
+        if (n1 == 1) {
             len = 2;
             if (buf[1] == '[') {
-                if (try stdin.read(buf[2..3]) == 1) {
+                const n2 = stdin.readStreaming(io, &.{buf[2..3]}) catch |err| switch (err) {
+                    error.EndOfStream => 0,
+                    else => return err,
+                };
+                if (n2 == 1) {
                     len = 3;
                 }
             }
@@ -383,18 +397,18 @@ fn readKey(stdin: std.fs.File) !Action {
     return .none;
 }
 
-fn clearLine(stdout: std.fs.File, prefix: []const u8) !void {
-    try stdout.writeAll("\r\x1B[K");
-    try stdout.writeAll(prefix);
+fn clearLine(stdout: std.Io.File, io: std.Io, prefix: []const u8) !void {
+    try stdout.writeStreamingAll(io, "\r\x1B[K");
+    try stdout.writeStreamingAll(io, prefix);
 }
 
-fn setCursor(stdout: std.fs.File, col: usize) !void {
-    try stdout.writeAll("\r");
+fn setCursor(stdout: std.Io.File, io: std.Io, col: usize) !void {
+    try stdout.writeStreamingAll(io, "\r");
     if (col > 0) {
         var buf: [16]u8 = undefined;
         const cmd = std.fmt.bufPrint(&buf, "\x1b[{d}C", .{col}) catch
             unreachable;
-        try stdout.writeAll(cmd);
+        try stdout.writeStreamingAll(io, cmd);
     }
 }
 

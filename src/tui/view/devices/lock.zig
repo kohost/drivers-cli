@@ -35,7 +35,7 @@ pub const LockDetail = struct {
         };
     }
 
-    pub fn render(self: *LockDetail, stdout: std.fs.File, focused: bool) !u16 {
+    pub fn render(self: *LockDetail, stdout: std.Io.File, focused: bool) !u16 {
         const height: u16 = 4;
         var panel = Panel.init(self.area.x, self.area.y, self.area.width, height);
         try panel.draw(stdout, .{ self.lock.name, self.lock.id, null, null });
@@ -67,7 +67,7 @@ pub const LockDetail = struct {
         return height;
     }
 
-    pub fn handleKey(self: *LockDetail, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleKey(self: *LockDetail, stdout: std.Io.File, c: u8) !KeyResult {
         if (self.mode_select.open) {
             return switch (c) {
                 'j' => blk: {

@@ -19,7 +19,7 @@ pub const StatusList = struct {
         return .{ .x = x, .y = y };
     }
 
-    pub fn render(self: *StatusList, stdout: std.fs.File, items: []const Item, focused: bool) !void {
+    pub fn render(self: *StatusList, stdout: std.Io.File, items: []const Item, focused: bool) !void {
         var pos_buf: [32]u8 = undefined;
 
         if (!self.open) {
@@ -88,7 +88,7 @@ pub const StatusList = struct {
         }
     }
 
-    pub fn close(self: *StatusList, stdout: std.fs.File, item_count: usize) !void {
+    pub fn close(self: *StatusList, stdout: std.Io.File, item_count: usize) !void {
         var pos_buf: [32]u8 = undefined;
         var row: u16 = 0;
         while (row < item_count) : (row += 1) {

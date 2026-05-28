@@ -13,7 +13,7 @@ pub const KeyVal = struct { label: []const u8, value: *ComponentInterface };
 pub const KeyValList = struct {
     interface: ComponentInterface,
     alloc: std.mem.Allocator,
-    rows: std.ArrayListUnmanaged(KeyVal),
+    rows: std.ArrayList(KeyVal),
     focused: ?usize,
     prev_key: u8,
 
@@ -99,6 +99,7 @@ pub const KeyValList = struct {
         if (self.focused) |f| {
             const result = rows[f].value.handleKey(key, mq);
             if (result == .consumed) return .consumed;
+            if (result == .committed) return .committed;
         }
 
         switch (key) {

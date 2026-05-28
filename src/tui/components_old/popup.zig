@@ -22,7 +22,7 @@ pub const Popup = struct {
         self.len = 0;
     }
 
-    pub fn render(self: *Popup, stdout: std.fs.File, cols: u16, rows: u16) !void {
+    pub fn render(self: *Popup, stdout: std.Io.File, cols: u16, rows: u16) !void {
         if (!self.visible) return;
 
         const width: u16 = 30;
@@ -43,7 +43,7 @@ pub const Popup = struct {
         try stdout.writeAll("\x1b[?25h");
     }
 
-    pub fn clear(self: *Popup, stdout: std.fs.File, cols: u16, rows: u16) !void {
+    pub fn clear(self: *Popup, stdout: std.Io.File, cols: u16, rows: u16) !void {
         if (self.visible) return;
         const width: u16 = 30;
         const height: u16 = 3;

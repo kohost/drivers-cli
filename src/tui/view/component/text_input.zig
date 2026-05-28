@@ -84,7 +84,7 @@ pub const TextInput = struct {
                 self.editing = false;
                 self.dirty = true;
                 mq.post(.render);
-                return .consumed;
+                return .committed;
             },
             // Backspace
             0x7f => {

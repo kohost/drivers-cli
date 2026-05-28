@@ -61,7 +61,7 @@ pub const AlarmDetail = struct {
         return self.security_switch.isAnimating();
     }
 
-    pub fn render(self: *AlarmDetail, stdout: std.fs.File, focused: bool) !u16 {
+    pub fn render(self: *AlarmDetail, stdout: std.Io.File, focused: bool) !u16 {
         const zone_items = self.getZoneItems();
         const zones = zone_items.slice();
         const zone_extra: u16 = if (self.zone_list.open) @intCast(zones.len) else 0;
@@ -173,7 +173,7 @@ pub const AlarmDetail = struct {
         return items;
     }
 
-    fn renderCredentials(self: *AlarmDetail, stdout: std.fs.File, pos_buf: *[32]u8, focused: bool) !void {
+    fn renderCredentials(self: *AlarmDetail, stdout: std.Io.File, pos_buf: *[32]u8, focused: bool) !void {
         if (self.alarm.credentials.len == 0) return;
         const cred_focused = focused and self.cursor == 2;
         if (!self.credentials_open) {
@@ -220,7 +220,7 @@ pub const AlarmDetail = struct {
         }
     }
 
-    pub fn handleKey(self: *AlarmDetail, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleKey(self: *AlarmDetail, stdout: std.Io.File, c: u8) !KeyResult {
         if (self.code_input.visible) {
             if (self.code_input.handleKey(c)) |code| {
                 try self.code_input.clear(stdout, self.cols, self.rows);

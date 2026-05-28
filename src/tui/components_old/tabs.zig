@@ -13,7 +13,7 @@ pub const Tab = struct {
         return .{ .labels = labels, .x = x, .y = y };
     }
 
-    pub fn draw(self: Tab, stdout: std.fs.File, focused: bool) !void {
+    pub fn draw(self: Tab, stdout: std.Io.File, focused: bool) !void {
         // Move to position
         var pos_buf: [32]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.y, self.x });
@@ -48,7 +48,7 @@ pub const Tab = struct {
         if (self.selected > 0) self.selected -= 1 else self.selected = self.labels.len - 1;
     }
 
-    pub fn handleKey(self: *Tab, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleKey(self: *Tab, stdout: std.Io.File, c: u8) !KeyResult {
         switch (c) {
             'h' => {
                 self.prev();

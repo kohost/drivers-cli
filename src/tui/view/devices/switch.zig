@@ -20,7 +20,7 @@ pub const SwitchDetail = struct {
         };
     }
 
-    pub fn render(self: *SwitchDetail, stdout: std.fs.File, focused: bool) !u16 {
+    pub fn render(self: *SwitchDetail, stdout: std.Io.File, focused: bool) !u16 {
         const height: u16 = 4;
         var panel = Panel.init(self.area.x, self.area.y, self.area.width, height);
         try panel.draw(stdout, .{ self.@"switch".name, self.@"switch".id, null, null });
@@ -40,7 +40,7 @@ pub const SwitchDetail = struct {
         return height;
     }
 
-    pub fn handleKey(self: *SwitchDetail, stdout: std.fs.File, c: u8) !KeyResult {
+    pub fn handleKey(self: *SwitchDetail, stdout: std.Io.File, c: u8) !KeyResult {
         _ = stdout;
         return switch (c) {
             '\r', '\n' => blk: {

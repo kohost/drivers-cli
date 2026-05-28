@@ -56,7 +56,7 @@ pub const Notification = struct {
         return std.fmt.bufPrint(buf, "\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch Color.red;
     }
 
-    pub fn tick(self: *Notification, stdout: std.fs.File, cols: u16) bool {
+    pub fn tick(self: *Notification, stdout: std.Io.File, cols: u16) bool {
         if (!self.visible) return false;
         const elapsed = std.time.milliTimestamp() - self.timestamp;
         const x = self.baseX(cols);
@@ -83,11 +83,11 @@ pub const Notification = struct {
         return false;
     }
 
-    pub fn render(self: *Notification, stdout: std.fs.File, cols: u16) void {
+    pub fn render(self: *Notification, stdout: std.Io.File, cols: u16) void {
         self.renderWithFade(stdout, cols, Color.red);
     }
 
-    fn renderWithFade(self: *Notification, stdout: std.fs.File, cols: u16, color: []const u8) void {
+    fn renderWithFade(self: *Notification, stdout: std.Io.File, cols: u16, color: []const u8) void {
         if (!self.visible) return;
         const x = self.baseX(cols) + self.slide_offset;
         if (x >= cols) return;
@@ -156,7 +156,7 @@ pub const Notification = struct {
         stdout.writeAll(Color.reset) catch return;
     }
 
-    pub fn renderAnimated(self: *Notification, stdout: std.fs.File, cols: u16) void {
+    pub fn renderAnimated(self: *Notification, stdout: std.Io.File, cols: u16) void {
         if (!self.visible) return;
         const elapsed = std.time.milliTimestamp() - self.timestamp;
         if (elapsed < hold_ms) {
@@ -169,7 +169,7 @@ pub const Notification = struct {
         self.renderWithFade(stdout, cols, color);
     }
 
-    fn clearStrip(_: *Notification, stdout: std.fs.File, x: u16, width: u16) void {
+    fn clearStrip(_: *Notification, stdout: std.Io.File, x: u16, width: u16) void {
         const y: u16 = 2;
         var buf: [32]u8 = undefined;
         var row: u16 = 0;
@@ -183,7 +183,7 @@ pub const Notification = struct {
         }
     }
 
-    pub fn clear(self: *Notification, stdout: std.fs.File, cols: u16) void {
+    pub fn clear(self: *Notification, stdout: std.Io.File, cols: u16) void {
         const bw = self.boxWidth();
         const x = self.baseX(cols);
         self.clearStrip(stdout, x, bw);

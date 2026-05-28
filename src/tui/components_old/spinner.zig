@@ -12,7 +12,7 @@ pub const Spinner = struct {
         return .{ .x = x, .y = y };
     }
 
-    pub fn render(self: *Spinner, stdout: std.fs.File, label: []const u8) !void {
+    pub fn render(self: *Spinner, stdout: std.Io.File, label: []const u8) !void {
         var pos_buf: [32]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.y, self.x });
         try stdout.writeAll(pos);

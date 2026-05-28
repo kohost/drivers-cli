@@ -10,7 +10,7 @@ pub const Toggle = struct {
         return .{ .x = x, .y = y, .labels = labels };
     }
 
-    pub fn render(self: *Toggle, stdout: std.fs.File, state: bool, focused: bool) !void {
+    pub fn render(self: *Toggle, stdout: std.Io.File, state: bool, focused: bool) !void {
         var pos_buf: [32]u8 = undefined;
         const pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.y, self.x });
         try stdout.writeAll(pos);
