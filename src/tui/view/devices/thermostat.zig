@@ -10,31 +10,17 @@ const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Thermostat = @import("../../state/models/thermostat.zig").Thermostat;
 const TextDisplay = @import("../component/text_display.zig").TextDisplay;
 const TextInput = @import("../component/text_input.zig").TextInput;
-const KeyVal = @import("../component/key_val_list.zig").KeyVal;
+const Boolean = @import("../component/boolean.zig").Boolean;
 const KeyValList = @import("../component/key_val_list.zig").KeyValList;
+
+const Render = *const fn (*const anyopaque, *std.Io.Writer) anyerror!void;
 
 pub const ThermostatView = struct {
     interface: ComponentInterface,
     arena: ArenaAllocator,
-    frame_arena: ArenaAllocator, // for per frame formatted strings
+    frame_arena: ArenaAllocator, // scratch for wire fragments on commit
     thermostat: *const Thermostat,
     list: KeyValList,
-
-    // Default props
-    const Row = enum(usize) {
-        name,
-        model,
-        serial,
-        firmware,
-        watts,
-        online,
-        scale,
-        temp,
-        mode,
-        hvac_state,
-        fan,
-        fan_state,
-    };
 
     pub fn init(a: Allocator, thermostat: *const Thermostat) !ThermostatView {
         var self = ThermostatView{
@@ -49,42 +35,40 @@ pub const ThermostatView = struct {
         };
         self.list = KeyValList.init(self.arena.allocator());
 
-        try self.addDisplay("name", thermostat.name);
-        try self.addDisplay("model", thermostat.model_number);
-        try self.addDisplay("serial", thermostat.serial_number);
-        try self.addDisplay("firmware", thermostat.firmware_version);
-        try self.addDisplay("watts", "");
-        try self.addDisplay("online", if (thermostat.offline) Color.red ++ "✗" ++ Color.reset else Color.green ++ "✔︎" ++ Color.reset);
-        try self.addDisplay("scale", @tagName(thermostat.temperature_scale));
-        try self.addDisplay("temp", "");
-        try self.addInput("mode", @tagName(thermostat.hvac_mode));
-        try self.addDisplay("state", if (thermostat.hvac_state) |s| @tagName(s) else "-");
-        try self.addInput("fan", @tagName(thermostat.fan_mode));
-        try self.addDisplay("state", if (thermostat.fan_state) |s| @tagName(s) else "-");
+        try self.bindDisplay("name", renderName);
+        try self.bindDisplay("model", renderModel);
+        try self.bindDisplay("serial", renderSerial);
+        try self.bindDisplay("firmware", renderFirmware);
+        try self.bindDisplay("watts", renderWatts);
+        try self.bindDisplay("online", renderOnline);
+        try self.bindDisplay("scale", renderScale);
+        try self.bindDisplay("temp", renderTemp);
+        try self.bindInput("mode", renderMode);
+        try self.bindDisplay("state", renderHvacState);
+        try self.bindInput("fan", renderFan);
+        try self.bindDisplay("fan state", renderFanState);
 
-        if (thermostat.current_humidity) |h| {
-            const humidity_str = try std.fmt.allocPrint(self.arena.allocator(), "{d:.1}", .{h});
-            try self.addDisplay("humidity", humidity_str);
-        }
-        if (thermostat.humidity_scale) |s| {
-            try self.addDisplay("humidity scale", @tagName(s));
-        }
-        if (thermostat.min_auto_delta) |d| {
-            const delta_str = try std.fmt.allocPrint(self.arena.allocator(), "{d}", .{d});
-            try self.addDisplay("delta", delta_str);
-        }
-        if (thermostat.cycle_rate) |r| {
-            const cycle_rate_str = try std.fmt.allocPrint(self.arena.allocator(), "{d}", .{r});
-            try self.addDisplay("cycle rate", cycle_rate_str);
-        }
+        if (thermostat.current_humidity != null) try self.bindDisplay("humidity", renderHumidity);
+        if (thermostat.humidity_scale != null) try self.bindDisplay("humidity scale", renderHumidityScale);
+        if (thermostat.min_auto_delta != null) try self.bindDisplay("delta", renderDelta);
+        if (thermostat.cycle_rate != null) try self.bindDisplay("cycle rate", renderCycleRate);
+        if (thermostat.ui_enabled != null) try self.bindBoolean("ui enabled", renderUiEnabled);
 
-        if (thermostat.ui_enabled) |e| {
-            try self.addDisplay("ui enabled", if (e) Color.green ++ "✔︎" ++ Color.reset else Color.red ++ "✗" ++ Color.reset);
+        if (thermostat.setpoints.heat != null) {
+            try self.bindSetpoint("heat", .heat, .value);
+            try self.bindSetpoint("heat min", .heat, .min);
+            try self.bindSetpoint("heat max", .heat, .max);
         }
-
-        if (thermostat.setpoints.heat) |sp| try self.addSetpoint("heat", sp);
-        if (thermostat.setpoints.cool) |sp| try self.addSetpoint("cool", sp);
-        if (thermostat.setpoints.auto) |sp| try self.addSetpoint("auto", sp);
+        if (thermostat.setpoints.cool != null) {
+            try self.bindSetpoint("cool", .cool, .value);
+            try self.bindSetpoint("cool min", .cool, .min);
+            try self.bindSetpoint("cool max", .cool, .max);
+        }
+        if (thermostat.setpoints.auto != null) {
+            try self.bindSetpoint("auto", .auto, .value);
+            try self.bindSetpoint("auto min", .auto, .min);
+            try self.bindSetpoint("auto max", .auto, .max);
+        }
 
         self.list.focused = 0;
         return self;
@@ -102,58 +86,7 @@ pub const ThermostatView = struct {
         frame: Frame,
     ) anyerror!void {
         const self: *ThermostatView = @fieldParentPtr("interface", iface);
-
-        // Scratch mem reset every write call
-        _ = self.frame_arena.reset(.retain_capacity);
-        const fa = self.frame_arena.allocator();
-
-        // Sync live fields from current thermostat state
-        // const name_display = self.getComponent(TextDisplay, Row.name);
-        // name_display.source = self.thermostat.name;
-        self.getComponent(TextDisplay, Row.name).source = self.thermostat.name;
-        self.getComponent(TextDisplay, Row.model).source = self.thermostat.model_number;
-        self.getComponent(TextDisplay, Row.serial).source = self.thermostat.serial_number;
-        self.getComponent(TextDisplay, Row.firmware).source = self.thermostat.firmware_version;
-        self.getComponent(TextDisplay, Row.watts).source = std.fmt.allocPrint(fa, "{d}", .{self.thermostat.watts}) catch "?";
-        self.getComponent(TextDisplay, Row.online).source = if (self.thermostat.offline) Color.red ++ "✗" ++ Color.reset else Color.green ++ "✔︎" ++ Color.reset;
-        self.getComponent(TextInput, Row.mode).source = @tagName(self.thermostat.hvac_mode);
-        self.getComponent(TextDisplay, Row.temp).source = std.fmt.allocPrint(fa, "{d}", .{self.thermostat.current_temperature}) catch "?";
-        self.getComponent(TextInput, Row.scale).source = @tagName(self.thermostat.temperature_scale);
-        self.getComponent(TextInput, Row.fan).source = @tagName(self.thermostat.fan_mode);
-        self.getComponent(TextDisplay, Row.hvac_state).source = if (self.thermostat.hvac_state) |s| @tagName(s) else "-";
-        self.getComponent(TextDisplay, Row.fan_state).source = if (self.thermostat.fan_state) |s| @tagName(s) else "-";
-
-        if (self.thermostat.current_humidity) |h| {
-            if (self.list.get(TextDisplay, "humidity")) |td| td.source = std.fmt.allocPrint(fa, "{d}", .{h}) catch "?";
-        }
-        if (self.thermostat.humidity_scale) |s| {
-            if (self.list.get(TextInput, "humidity scale")) |ti| ti.source = @tagName(s);
-        }
-        if (self.thermostat.min_auto_delta) |d| {
-            if (self.list.get(TextDisplay, "delta")) |td| td.source = std.fmt.allocPrint(fa, "{d}", .{d}) catch "?";
-        }
-        if (self.thermostat.cycle_rate) |cr| {
-            if (self.list.get(TextDisplay, "cycle rate")) |td| td.source = std.fmt.allocPrint(fa, "{d}", .{cr}) catch "?";
-        }
-        if (self.thermostat.ui_enabled) |enabled| {
-            if (self.list.get(TextDisplay, "ui enabled")) |td| td.source = if (enabled) Color.green ++ "✔︎" ++ Color.reset else Color.red ++ "✗" ++ Color.reset;
-        }
-        if (self.thermostat.setpoints.heat) |sp| {
-            if (self.list.get(TextInput, "heat")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.value}) catch "?";
-            if (self.list.get(TextInput, "heat min")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.min}) catch "?";
-            if (self.list.get(TextInput, "heat max")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.max}) catch "?";
-        }
-        if (self.thermostat.setpoints.cool) |sp| {
-            if (self.list.get(TextInput, "cool")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.value}) catch "?";
-            if (self.list.get(TextInput, "cool min")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.min}) catch "?";
-            if (self.list.get(TextInput, "cool max")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.max}) catch "?";
-        }
-        if (self.thermostat.setpoints.auto) |sp| {
-            if (self.list.get(TextInput, "auto")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.value}) catch "?";
-            if (self.list.get(TextInput, "auto min")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.min}) catch "?";
-            if (self.list.get(TextInput, "auto max")) |ti| ti.source = std.fmt.allocPrint(fa, "{d:.1}", .{sp.max}) catch "?";
-        }
-
+        // Components pull their own values from the model and render themselves.
         try self.list.interface.write(writer, cursor, frame);
     }
 
@@ -164,42 +97,149 @@ pub const ThermostatView = struct {
             const idx = self.list.focused orelse return .consumed;
             const row = self.list.rows.items[idx];
             const ti: *TextInput = @fieldParentPtr("interface", row.value);
-            const owned = self.arena
-                .allocator()
-                .dupe(u8, ti.buf[0..ti.buf_len]) catch return .consumed;
+            _ = self.frame_arena.reset(.retain_capacity);
+            const a = self.frame_arena.allocator();
+            const frag = (buildWire(a, row.label, ti.buf[0..ti.buf_len]) catch return .consumed) orelse return .consumed;
             mq.post(.{ .data_changed = .{
                 .id = self.thermostat.id,
                 .collection = .devices,
-                .key = row.label,
-                .value = .{ .string = owned },
+                .data = frag,
             } });
         }
         return result;
     }
 
-    fn addDisplay(self: *ThermostatView, label: []const u8, source: []const u8) !void {
-        const alloc = self.arena.allocator();
-        const d = try alloc.create(TextDisplay);
-        d.* = TextDisplay.init(source, .{});
+    // --- Row builders: bind a component to a render fn (pull from the model) ---
+
+    fn bindDisplay(self: *ThermostatView, label: []const u8, render: Render) !void {
+        const a = self.arena.allocator();
+        const d = try a.create(TextDisplay);
+        d.* = TextDisplay.init("", .{});
+        d.binding = .{ .ctx = self.thermostat, .render = render };
         try self.list.addRow(label, &d.interface);
     }
 
-    fn addInput(self: *ThermostatView, label: []const u8, source: []const u8) !void {
-        const alloc = self.arena.allocator();
-        const i = try alloc.create(TextInput);
-        i.* = TextInput.init(source);
+    fn bindInput(self: *ThermostatView, label: []const u8, render: Render) !void {
+        const a = self.arena.allocator();
+        const i = try a.create(TextInput);
+        i.* = TextInput.init("");
+        i.binding = .{ .ctx = self.thermostat, .render = render };
         try self.list.addRow(label, &i.interface);
     }
 
-    fn addSetpoint(self: *ThermostatView, name: []const u8, sp: Thermostat.Setpoint) !void {
-        const alloc = self.arena.allocator();
-        try self.addInput(name, try std.fmt.allocPrint(alloc, "{d:.1}", .{sp.value}));
-        try self.addInput(try std.fmt.allocPrint(alloc, "{s} min", .{name}), try std.fmt.allocPrint(alloc, "{d:.1}", .{sp.min}));
-        try self.addInput(try std.fmt.allocPrint(alloc, "{s} max", .{name}), try std.fmt.allocPrint(alloc, "{d:.1}", .{sp.max}));
+    fn bindBoolean(self: *ThermostatView, label: []const u8, render: Render) !void {
+        const a = self.arena.allocator();
+        const i = try a.create(Boolean);
+        i.* = Boolean.init(false);
+        i.binding = .{ .ctx = self.thermostat, .render = render };
+        try self.list.addRow(label, &i.interface);
     }
 
-    fn getComponent(self: *ThermostatView, comptime T: type, row: Row) *T {
-        const r = self.list.rows.items[@intFromEnum(row)];
-        return @fieldParentPtr("interface", r.value);
+    const SetpointRef = struct {
+        pub const Which = enum { heat, cool, auto };
+        pub const Prop = enum { value, min, max };
+        t: *const Thermostat,
+        which: Which,
+        prop: Prop,
+    };
+
+    fn bindSetpoint(self: *ThermostatView, label: []const u8, which: SetpointRef.Which, prop: SetpointRef.Prop) !void {
+        const a = self.arena.allocator();
+        const ref = try a.create(SetpointRef);
+        ref.* = .{ .t = self.thermostat, .which = which, .prop = prop };
+        const i = try a.create(TextInput);
+        i.* = TextInput.init("");
+        i.binding = .{ .ctx = ref, .render = renderSetpoint };
+        try self.list.addRow(label, &i.interface);
+    }
+
+    // --- Render bindings: cast the opaque ctx back, write the current value ---
+
+    fn t(ctx: *const anyopaque) *const Thermostat {
+        return @ptrCast(@alignCast(ctx));
+    }
+
+    fn renderName(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(t(ctx).name);
+    }
+    fn renderModel(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(t(ctx).model_number);
+    }
+    fn renderSerial(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(t(ctx).serial_number);
+    }
+    fn renderFirmware(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(t(ctx).firmware_version);
+    }
+    fn renderWatts(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.print("{d}", .{t(ctx).watts});
+    }
+    fn renderTemp(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.print("{d}", .{t(ctx).current_temperature});
+    }
+    fn renderScale(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(@tagName(t(ctx).temperature_scale));
+    }
+    fn renderMode(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(@tagName(t(ctx).hvac_mode));
+    }
+    fn renderFan(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(@tagName(t(ctx).fan_mode));
+    }
+    fn renderHvacState(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(if (t(ctx).hvac_state) |s| @tagName(s) else "-");
+    }
+    fn renderFanState(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(if (t(ctx).fan_state) |s| @tagName(s) else "-");
+    }
+    fn renderOnline(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(if (t(ctx).offline) Color.red ++ "✗" ++ Color.reset else Color.green ++ "✔︎" ++ Color.reset);
+    }
+    fn renderHumidity(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.print("{d:.1}", .{t(ctx).current_humidity.?});
+    }
+    fn renderHumidityScale(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(@tagName(t(ctx).humidity_scale.?));
+    }
+    fn renderDelta(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.print("{d}", .{t(ctx).min_auto_delta.?});
+    }
+    fn renderCycleRate(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.print("{d}", .{t(ctx).cycle_rate.?});
+    }
+    fn renderUiEnabled(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        try w.writeAll(if (t(ctx).ui_enabled.?) Color.green ++ "✔︎" ++ Color.reset else Color.red ++ "✗" ++ Color.reset);
+    }
+    fn renderSetpoint(ctx: *const anyopaque, w: *std.Io.Writer) !void {
+        const r: *const SetpointRef = @ptrCast(@alignCast(ctx));
+        const maybe_sp = switch (r.which) {
+            .heat => r.t.setpoints.heat,
+            .cool => r.t.setpoints.cool,
+            .auto => r.t.setpoints.auto,
+        };
+        const sp = maybe_sp orelse {
+            try w.writeAll("-");
+            return;
+        };
+        const v = switch (r.prop) {
+            .value => sp.value,
+            .min => sp.min,
+            .max => sp.max,
+        };
+        try w.print("{d:.1}", .{v});
+    }
+
+    // Wire translation: UI label -> command fragment (setpoints: next)
+
+    fn buildWire(alloc: Allocator, label: []const u8, text: []const u8) !?std.json.Value {
+        if (std.mem.eql(u8, label, "mode")) return try flat(alloc, "hvacMode", text);
+        if (std.mem.eql(u8, label, "fan")) return try flat(alloc, "fanMode", text);
+        return null;
+    }
+
+    fn flat(alloc: Allocator, key: []const u8, value: []const u8) !std.json.Value {
+        var o: std.json.ObjectMap = .empty;
+        try o.put(alloc, key, .{ .string = value });
+        return .{ .object = o };
     }
 };

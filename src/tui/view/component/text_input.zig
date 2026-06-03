@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("../../utils.zig");
 const Color = @import("../../color.zig");
 const ComponentInterface = @import("../component.zig").ComponentInterface;
+const Binding = @import("../component.zig").Binding;
 const Cursor = @import("../component.zig").Cursor;
 const Frame = @import("../component.zig").Frame;
 const KeyResult = @import("../component.zig").KeyResult;
@@ -10,11 +11,12 @@ const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 pub const TextInput = struct {
     interface: ComponentInterface,
     source: []const u8,
-    buf: [128]u8,
-    buf_len: u8,
-    cursor: u8,
-    editing: bool,
-    dirty: bool,
+    binding: ?Binding = null,
+    buf: [128]u8 = undefined,
+    buf_len: u8 = 0,
+    cursor: u8 = 0,
+    editing: bool = false,
+    dirty: bool = false,
 
     pub fn init(source: []const u8) TextInput {
         return .{
@@ -23,27 +25,27 @@ pub const TextInput = struct {
                 .handleKey_fn = handleKey,
             },
             .source = source,
-            .buf = undefined,
-            .buf_len = 0,
-            .cursor = 0,
-            .editing = false,
-            .dirty = false,
         };
     }
 
-    fn write(
-        iface: *ComponentInterface,
-        writer: *std.Io.Writer,
-        cursor: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
+    fn write(iface: *ComponentInterface, writer: *std.Io.Writer, cursor: *Cursor, frame: Frame) anyerror!void {
         const self: *TextInput = @fieldParentPtr("interface", iface);
-        const text = if (self.editing or self.dirty) self.buf[0..self.buf_len] else self.source;
-        const color = if (self.editing or self.dirty) Color.yellow else Color.text;
+
+        // Resolve optimistic state: once the model shows what we committed, stop overriding it.
+        if (self.dirty and !self.editing) {
+            var scratch: [128]u8 = undefined;
+            if (std.mem.eql(u8, self.currentValue(&scratch), self.buf[0..self.buf_len])) self.dirty = false;
+        }
 
         try utils.moveTo(writer, frame.x, frame.y);
-        try writer.writeAll(color);
-        try writer.writeAll(text);
+
+        if (self.editing or self.dirty) {
+            try writer.writeAll(Color.yellow);
+            try writer.writeAll(self.buf[0..self.buf_len]);
+        } else {
+            try writer.writeAll(Color.text);
+            if (self.binding) |b| try b.render(b.ctx, writer) else try writer.writeAll(self.source);
+        }
         try writer.writeAll(Color.reset);
 
         if (self.editing) {
@@ -59,10 +61,9 @@ pub const TextInput = struct {
         if (!self.editing) {
             switch (key) {
                 'l', '\r', '\n' => {
-                    const copy_len: u8 = @intCast(@min(self.source.len, self.buf.len));
-                    @memcpy(self.buf[0..copy_len], self.source[0..copy_len]);
-                    self.buf_len = copy_len;
-                    self.cursor = copy_len;
+                    const v = self.currentValue(&self.buf); // seed from live value
+                    self.buf_len = @intCast(v.len);
+                    self.cursor = self.buf_len;
                     self.editing = true;
                     mq.post(.render);
                     return .consumed;
@@ -72,22 +73,19 @@ pub const TextInput = struct {
         }
 
         switch (key) {
-            // Esc
-            0x1b => {
+            0x1b => { // Esc — discard edit, drop optimistic value
                 self.editing = false;
                 self.dirty = false;
                 mq.post(.render);
                 return .consumed;
             },
-            // Enter
-            '\r', '\n' => {
+            '\r', '\n' => { // Enter — commit; stay optimistic until model catches up
                 self.editing = false;
                 self.dirty = true;
                 mq.post(.render);
                 return .committed;
             },
-            // Backspace
-            0x7f => {
+            0x7f => { // Backspace
                 if (self.cursor > 0) {
                     self.cursor -= 1;
                     @memmove(self.buf[self.cursor .. self.buf_len - 1], self.buf[self.cursor + 1 .. self.buf_len]);
@@ -107,5 +105,16 @@ pub const TextInput = struct {
                 return .consumed;
             },
         }
+    }
+
+    fn currentValue(self: *TextInput, out: []u8) []const u8 {
+        if (self.binding) |b| {
+            var fw = std.Io.Writer.fixed(out);
+            b.render(b.ctx, &fw) catch {};
+            return out[0..fw.end];
+        }
+        const n = @min(self.source.len, out.len);
+        @memcpy(out[0..n], self.source[0..n]);
+        return out[0..n];
     }
 };

@@ -21,9 +21,9 @@ pub const App = struct {
     prev_focus: ?usize,
     input_prefix: u8,
     mq: MessageQueue,
-    // pending_command: []const u8,
     pending_command: std.json.ObjectMap = .empty,
     transport: Transport,
+    pending_command_data_alloc: std.heap.ArenaAllocator,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -60,12 +60,14 @@ pub const App = struct {
             .input_prefix = 0,
             .pending_command = pending_command,
             .transport = Transport.init(alloc, cfg, io),
+            .pending_command_data_alloc = std.heap.ArenaAllocator.init(alloc),
         };
     }
 
     pub fn deinit(self: *App) void {
         self.view.deinit();
         self.pending_command.deinit(self.alloc);
+        self.pending_command_data_alloc.deinit();
     }
 
     pub fn resize(self: *App, cols: u16, rows: u16) !void {
@@ -151,43 +153,29 @@ pub const App = struct {
                         self.view.setFilter(self.layout.footer.input());
                     }
                 },
-                // TODO: Silently swallowing errors with catch{} will want to surface
+                // TODO: Silently swallowing errors with catch{} will want to surface.
                 .send_command => self.executeCommand() catch {},
                 .command_changed => |name| self.pending_command.put(self.alloc, "command", .{ .string = name }) catch {},
                 .data_changed => |data| {
-                    std.debug.print("1: {f}\n", .{std.json.fmt(std.json.Value{ .object = self.pending_command }, .{ .whitespace = .indent_2 })});
+                    const a = self.pending_command_data_alloc.allocator();
+                    // Collection (e.g. devices) holds an array of entities.
+                    const coll = self.pending_command.getPtr("data").?.object.getOrPutValue(a, @tagName(data.collection), .{ .array = std.json.Array.init(a) }) catch continue;
+                    const entities = &coll.value_ptr.array;
 
-                    // Create collection if it doesnt' exist e.g. devices, credentials, users, groups, etc
-                    _ = self.pending_command.getPtr("data").?.object.getOrPutValue(self.alloc, @tagName(data.collection), .{ .array = std.json.Array.init(self.alloc) }) catch continue;
-                    std.debug.print("2: {f}\n", .{std.json.fmt(std.json.Value{ .object = self.pending_command }, .{ .whitespace = .indent_2 })});
-
-                    // Find device by id if we are updating multiple props
-                    const entities = &self.pending_command.getPtr("data").?.object.getPtr(@tagName(data.collection)).?.array;
-                    std.debug.print("{d}\n", .{entities.items.len});
-                    for (entities.items) |*entity| {
-                        if (entity.object.get("id")) |id| {
-                            std.debug.print("id: {s}\n", .{id.string});
-                            if (std.mem.eql(u8, id.string, data.id)) {
-                                std.debug.print("We have a match", .{});
-                                entity.object.put(self.alloc, data.key, data.value) catch continue;
-                                break;
-                            }
-                        } else {}
-                    } else {
+                    // Find the entity by id, else create one carrying its id.
+                    const entity = for (entities.items) |*e| {
+                        if (e.object.get("id")) |id| {
+                            if (std.mem.eql(u8, id.string, data.id)) break e;
+                        }
+                    } else blk: {
                         var obj = std.json.Value{ .object = .empty };
-                        obj.object.put(self.alloc, "id", .{ .string = data.id }) catch continue;
-                        obj.object.put(self.alloc, "hvacMode", data.value) catch continue;
+                        obj.object.put(a, "id", .{ .string = a.dupe(u8, data.id) catch continue }) catch continue;
                         entities.append(obj) catch continue;
-                    }
+                        break :blk &entities.items[entities.items.len - 1];
+                    };
 
-                    std.debug.print("Entities: {f}\n", .{std.json.fmt(std.json.Value{ .array = entities.* }, .{ .whitespace = .indent_2 })});
-
-                    // self.pending_command
-                    //     .getPtr("data").?.object
-                    //     .put(self.alloc, data.key, data.value) catch {};
-                    // self.pending_command
-                    //     .getPtr("data").?.object
-                    //     .put(self.alloc, "id", std.json.Value{ .string = data.id }) catch {};
+                    // Merge the wire fragment into the entity (accumulates across edits).
+                    mergeInto(a, &entity.object, data.data) catch continue;
                 },
             }
         }
@@ -251,5 +239,30 @@ pub const App = struct {
             try self.view.setResponse(res_wa.written());
             _ = self.state.update(parsed.value);
         }
+
+        // Staged edits were sent. Reclaim arean and reset data to {}
+        _ = self.pending_command_data_alloc.reset(.retain_capacity);
+        self.pending_command.getPtr("data").?.* = .{ .object = .empty };
     }
 };
+
+/// Deep-merge a JSON object `src` into `dst`. Nested objects merge recursively
+/// (e.g. accumulating multiple setpoints); scalars overwrite. Strings are duped
+/// so `dst` doesn't borrow the caller's transient fragment.
+fn mergeInto(alloc: std.mem.Allocator, dst: *std.json.ObjectMap, src: std.json.Value) !void {
+    if (src != .object) return;
+    var it = src.object.iterator();
+    while (it.next()) |kv| {
+        const key = kv.key_ptr.*;
+        const val = kv.value_ptr.*;
+        switch (val) {
+            .object => {
+                const slot = try dst.getOrPutValue(alloc, key, .{ .object = .empty });
+                if (slot.value_ptr.* != .object) slot.value_ptr.* = .{ .object = .empty };
+                try mergeInto(alloc, &slot.value_ptr.object, val);
+            },
+            .string => |s| try dst.put(alloc, key, .{ .string = try alloc.dupe(u8, s) }),
+            else => try dst.put(alloc, key, val),
+        }
+    }
+}

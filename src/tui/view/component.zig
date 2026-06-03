@@ -42,6 +42,13 @@ pub const Frame = struct {
     h: u16 = 0,
 };
 
+/// A pull-based value source: pairs a type-erased context (e.g. a model
+/// pointer) with a function that renders its current value to the writer.
+pub const Binding = struct {
+    ctx: *const anyopaque,
+    render: *const fn (*const anyopaque, *Writer) anyerror!void,
+};
+
 pub const ComponentInterface = struct {
     write_fn: *const fn (*ComponentInterface, *Writer, *Cursor, Frame) anyerror!void,
     handleKey_fn: *const fn (*ComponentInterface, u8, *MessageQueue) KeyResult,

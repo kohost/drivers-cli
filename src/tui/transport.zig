@@ -41,20 +41,13 @@ pub const Transport = struct {
         try w.interface.writeAll(cmd);
         try w.interface.flush();
 
-        var read_buf: [4096]u8 = undefined;
-        var r = stream.reader(self.io, &read_buf);
-
         var res: std.ArrayList(u8) = .empty;
         errdefer res.deinit(self.alloc);
 
         var chunk: [4096]u8 = undefined;
         while (true) {
-            var bufs: [1][]u8 = .{&chunk};
-            const bytes_read = r.interface.readVec(&bufs) catch |err| switch (err) {
-                error.EndOfStream => break,
-                else => return err,
-            };
-            if (bytes_read == 0) continue;
+            const bytes_read = try std.posix.read(stream.socket.handle, &chunk);
+            if (bytes_read == 0) break;
             try res.appendSlice(self.alloc, chunk[0..bytes_read]);
             if (isCompleteJson(res.items)) break;
         }

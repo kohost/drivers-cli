@@ -19,8 +19,7 @@ pub const Message = union(enum) {
     data_changed: struct {
         id: []const u8,
         collection: Collection,
-        key: []const u8,
-        value: std.json.Value,
+        data: std.json.Value,
     },
 };
 

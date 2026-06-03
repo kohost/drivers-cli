@@ -14,6 +14,7 @@ const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const Select = @import("component/select.zig").Select;
 const Button = @import("component/button.zig").Button;
 const TextDisplay = @import("component/text_display.zig").TextDisplay;
+const Viewport = @import("component/viewport.zig").Viewport;
 const Style = @import("component.zig").Style;
 const icons = @import("../icons.zig");
 const commands = @import("../../commands.zig");
@@ -46,9 +47,9 @@ pub const DriverView = struct {
     send_button: Button,
     frame: Frame,
     req_text: []const u8,
-    req_display: TextDisplay,
+    req_display: Viewport,
     res_text: []const u8,
-    res_display: TextDisplay,
+    res_display: Viewport,
 
     pub const Config = struct {
         alloc: std.mem.Allocator,
@@ -117,12 +118,12 @@ pub const DriverView = struct {
             }),
             .focused = null,
             .req_text = try cfg.alloc.dupe(u8, ""),
-            .req_display = TextDisplay.init("", .{
+            .req_display = Viewport.init("", .{
                 .color = Color.subtext0,
                 .padding_left = 1,
             }),
             .res_text = try cfg.alloc.dupe(u8, ""),
-            .res_display = TextDisplay.init("", .{
+            .res_display = Viewport.init("", .{
                 .color = Color.subtext0,
                 .padding_left = 1,
             }),
