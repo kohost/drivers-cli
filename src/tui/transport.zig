@@ -36,12 +36,9 @@ pub const Transport = struct {
     }
 
     fn sendCmd(self: *Transport, stream: std.Io.net.Stream, cmd: []const u8) ![]const u8 {
-        const req = try self.buildRequest(cmd);
-        defer self.alloc.free(req);
-
         var write_buf: [4096]u8 = undefined;
         var w = stream.writer(self.io, &write_buf);
-        try w.interface.writeAll(req);
+        try w.interface.writeAll(cmd);
         try w.interface.flush();
 
         var read_buf: [4096]u8 = undefined;
@@ -63,22 +60,6 @@ pub const Transport = struct {
         }
 
         return res.toOwnedSlice(self.alloc);
-    }
-
-    fn buildRequest(self: *Transport, cmd: []const u8) ![]const u8 {
-        var req_map: std.json.ObjectMap = .empty;
-        defer req_map.deinit(self.alloc);
-
-        var data_map: std.json.ObjectMap = .empty;
-        defer data_map.deinit(self.alloc);
-
-        try req_map.put(self.alloc, "command", .{ .string = cmd });
-        try req_map.put(self.alloc, "data", .{ .object = data_map });
-
-        var aw: std.Io.Writer.Allocating = .init(self.alloc);
-        defer aw.deinit();
-        try std.json.fmt(std.json.Value{ .object = req_map }, .{}).format(&aw.writer);
-        return try aw.toOwnedSlice();
     }
 
     fn isCompleteJson(data: []const u8) bool {

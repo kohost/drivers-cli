@@ -168,6 +168,8 @@ pub const ThermostatView = struct {
                 .allocator()
                 .dupe(u8, ti.buf[0..ti.buf_len]) catch return .consumed;
             mq.post(.{ .data_changed = .{
+                .id = self.thermostat.id,
+                .collection = .devices,
                 .key = row.label,
                 .value = .{ .string = owned },
             } });

@@ -41,7 +41,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
     var app = try App.init(alloc, &state, size.cols, size.rows, cfg, io);
     defer app.deinit();
 
-    if (app.transport.fetch("GetDevices")) |parsed| {
+    if (app.transport.fetch("{\"command\":\"GetDevices\",\"data\":{}}")) |parsed| {
         defer parsed.deinit();
         state.loadFromJson(parsed.value) catch {};
     }

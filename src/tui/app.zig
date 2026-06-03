@@ -58,7 +58,6 @@ pub const App = struct {
             .focused = 0,
             .prev_focus = 0,
             .input_prefix = 0,
-            // .pending_command = "UpdateDevices",
             .pending_command = pending_command,
             .transport = Transport.init(alloc, cfg, io),
         };
@@ -156,9 +155,39 @@ pub const App = struct {
                 .send_command => self.executeCommand() catch {},
                 .command_changed => |name| self.pending_command.put(self.alloc, "command", .{ .string = name }) catch {},
                 .data_changed => |data| {
-                    self.pending_command
-                        .getPtr("data").?.object
-                        .put(self.alloc, data.key, data.value) catch {};
+                    std.debug.print("1: {f}\n", .{std.json.fmt(std.json.Value{ .object = self.pending_command }, .{ .whitespace = .indent_2 })});
+
+                    // Create collection if it doesnt' exist e.g. devices, credentials, users, groups, etc
+                    _ = self.pending_command.getPtr("data").?.object.getOrPutValue(self.alloc, @tagName(data.collection), .{ .array = std.json.Array.init(self.alloc) }) catch continue;
+                    std.debug.print("2: {f}\n", .{std.json.fmt(std.json.Value{ .object = self.pending_command }, .{ .whitespace = .indent_2 })});
+
+                    // Find device by id if we are updating multiple props
+                    const entities = &self.pending_command.getPtr("data").?.object.getPtr(@tagName(data.collection)).?.array;
+                    std.debug.print("{d}\n", .{entities.items.len});
+                    for (entities.items) |*entity| {
+                        if (entity.object.get("id")) |id| {
+                            std.debug.print("id: {s}\n", .{id.string});
+                            if (std.mem.eql(u8, id.string, data.id)) {
+                                std.debug.print("We have a match", .{});
+                                entity.object.put(self.alloc, data.key, data.value) catch continue;
+                                break;
+                            }
+                        } else {}
+                    } else {
+                        var obj = std.json.Value{ .object = .empty };
+                        obj.object.put(self.alloc, "id", .{ .string = data.id }) catch continue;
+                        obj.object.put(self.alloc, "hvacMode", data.value) catch continue;
+                        entities.append(obj) catch continue;
+                    }
+
+                    std.debug.print("Entities: {f}\n", .{std.json.fmt(std.json.Value{ .array = entities.* }, .{ .whitespace = .indent_2 })});
+
+                    // self.pending_command
+                    //     .getPtr("data").?.object
+                    //     .put(self.alloc, data.key, data.value) catch {};
+                    // self.pending_command
+                    //     .getPtr("data").?.object
+                    //     .put(self.alloc, "id", std.json.Value{ .string = data.id }) catch {};
                 },
             }
         }
