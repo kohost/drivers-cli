@@ -99,7 +99,7 @@ pub const KeyValList = struct {
         if (self.focused) |f| {
             const result = rows[f].value.handleKey(key, mq);
             if (result == .consumed) return .consumed;
-            if (result == .committed) return .committed;
+            if (result == .changed) return .changed;
         }
 
         switch (key) {

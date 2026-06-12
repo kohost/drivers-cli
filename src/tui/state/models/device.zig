@@ -5,9 +5,9 @@ const Switch = @import("switch.zig").Switch;
 const Thermostat = @import("thermostat.zig").Thermostat;
 
 pub const Device = union(enum) {
-    alarm: Alarm,
-    lock: Lock,
-    @"switch": Switch,
+    // alarm: Alarm,
+    // lock: Lock,
+    // @"switch": Switch,
     thermostat: Thermostat,
 
     pub fn id(self: Device) []const u8 {
@@ -83,6 +83,24 @@ pub const Device = union(enum) {
     pub fn update(self: *Device, obj: std.json.ObjectMap) bool {
         return switch (self.*) {
             inline else => |*d| d.update(obj),
+        };
+    }
+
+    pub fn clone(self: *const Device, alloc: std.mem.Allocator) !Device {
+        return switch (self.*) {
+            inline else => |*d, tag| @unionInit(Device, @tagName(tag), try d.clone(alloc)),
+        };
+    }
+
+    pub fn revert(self: *Device, source: *const Device) void {
+        return switch (self.*) {
+            inline else => |*d, tag| d.revert(&@field(source.*, @tagName(tag))),
+        };
+    }
+
+    pub fn diff(self: *const Device, source: *const Device, a: std.mem.Allocator, out: *std.json.ObjectMap) !bool {
+        return switch (self.*) {
+            inline else => |*d, tag| d.diff(&@field(source.*, @tagName(tag)), a, out),
         };
     }
 };

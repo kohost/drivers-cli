@@ -33,6 +33,7 @@ const Focus = enum { main, commands, request, response, command_select, send_but
 pub const DriverView = struct {
     alloc: std.mem.Allocator,
     state: *State,
+    vstate: *State,
     panels: [4]Panel,
     table: Table,
     focused: ?Focus,
@@ -54,6 +55,7 @@ pub const DriverView = struct {
     pub const Config = struct {
         alloc: std.mem.Allocator,
         state: *State,
+        vstate: *State,
         appCfg: AppConfig,
         frame: Frame,
     };
@@ -76,13 +78,14 @@ pub const DriverView = struct {
         return .{
             .alloc = cfg.alloc,
             .state = cfg.state,
+            .vstate = cfg.vstate,
             .host_label = host_label,
             .manufacturer = manufacturer,
             .depth = 0,
             .device_idx = null,
             .list_selected = null,
             .thermostat_view = undefined,
-            .command_select = Select.init("UpdateCredentials", &command_names, .{
+            .command_select = Select.init("UpdateDevices", &command_names, .{
                 .color = Color.flamingo,
                 .secondary_color = Color.dim ++ Color.flamingo,
                 .tertiary_color = Color.flamingo,
@@ -261,11 +264,16 @@ pub const DriverView = struct {
                                 if (std.mem.eql(u8, device.id(), id)) {
                                     self.list_selected = self.table.selected;
                                     self.device_idx = idx;
-                                    switch (device.*) {
-                                        .thermostat => |*d| {
-                                            self.thermostat_view = ThermostatView.init(self.alloc, d) catch return .consumed;
+                                    const sdevice = &self.state.devices.items[idx];
+                                    const vdevice = &self.vstate.devices.items[idx];
+                                    switch (vdevice.*) {
+                                        .thermostat => |*vd| {
+                                            switch (sdevice.*) {
+                                                .thermostat => |*sd| {
+                                                    self.thermostat_view = ThermostatView.init(self.alloc, vd, sd) catch return .consumed;
+                                                },
+                                            }
                                         },
-                                        else => return .consumed,
                                     }
                                     self.depth = 1;
                                     mq.post(.render);
@@ -320,7 +328,7 @@ pub const DriverView = struct {
                 const r = display.interface.handleKey(key, mq);
                 switch (r) {
                     .consumed => return .consumed,
-                    .focus_next, .focus_prev => {},  // fall through to spatial nav
+                    .focus_next, .focus_prev => {}, // fall through to spatial nav
                     else => {},
                 }
             }

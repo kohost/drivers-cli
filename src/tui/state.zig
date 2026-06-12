@@ -87,4 +87,43 @@ pub const State = struct {
         }
         return changed;
     }
+
+    pub fn clone(self: *State, alloc: std.mem.Allocator) !State {
+        var devices: std.ArrayList(Device) = try std.ArrayList(Device).initCapacity(alloc, self.devices.items.len);
+        errdefer {
+            for (devices.items) |*d| d.deinit();
+            devices.deinit(alloc);
+        }
+
+        for (self.devices.items) |*device| {
+            devices.appendAssumeCapacity(try device.clone(alloc));
+        }
+
+        return .{
+            .devices = devices,
+            .alloc = alloc,
+            .system = if (self.system) |sys| .{
+                // mirror loadFromJson: "" stays a literal (deinit only frees len > 0)
+                .manufacturer = if (sys.manufacturer.len > 0) try alloc.dupe(u8, sys.manufacturer) else "",
+                .model = if (sys.model.len > 0) try alloc.dupe(u8, sys.model) else "",
+                .api_version = if (sys.api_version.len > 0) try alloc.dupe(u8, sys.api_version) else "",
+                .ios_app_url = if (sys.ios_app_url.len > 0) try alloc.dupe(u8, sys.ios_app_url) else "",
+                .android_app_url = if (sys.android_app_url.len > 0) try alloc.dupe(u8, sys.android_app_url) else "",
+                .web_app_url = if (sys.web_app_url.len > 0) try alloc.dupe(u8, sys.web_app_url) else "",
+            } else null,
+        };
+    }
+
+    pub fn diff(self: *State, source: *State, a: std.mem.Allocator) !std.json.Value {
+        var devices = std.json.Array.init(a);
+        for (self.devices.items) |*device| {
+            const source_device = source.getDevice(device.id()) orelse continue;
+            var obj: std.json.ObjectMap = .empty;
+            if (try device.diff(source_device, a, &obj)) {
+                try obj.put(a, "id", .{ .string = try a.dupe(u8, device.id()) });
+                try devices.append(.{ .object = obj });
+            }
+        }
+        return .{ .array = devices };
+    }
 };

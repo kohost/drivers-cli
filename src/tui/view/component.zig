@@ -16,7 +16,7 @@ pub const Cursor = struct {
 
 pub const KeyResult = enum {
     consumed, // generic handled
-    committed, // user finalized an editable value (e.g. Enter in TextInput)
+    changed, // user finalized an editable value (e.g. Enter in TextInput) — mirrors the DOM change event
     ignored,
     focus_next,
     focus_prev,
@@ -43,15 +43,17 @@ pub const Frame = struct {
 };
 
 /// A pull-based value source: pairs a type-erased context (e.g. a model
-/// pointer) with a function that renders its current value to the writer.
+/// pointer) with a function that formats its current value to the writer.
 pub const Binding = struct {
-    ctx: *const anyopaque,
-    render: *const fn (*const anyopaque, *Writer) anyerror!void,
+    ctx: *anyopaque,
+    read: *const fn (*const anyopaque, *Writer) anyerror!void,
+    write: ?*const fn (*anyopaque, []const u8) anyerror!void = null,
 };
 
 pub const ComponentInterface = struct {
     write_fn: *const fn (*ComponentInterface, *Writer, *Cursor, Frame) anyerror!void,
     handleKey_fn: *const fn (*ComponentInterface, u8, *MessageQueue) KeyResult,
+    value_fn: ?*const fn (*ComponentInterface, std.mem.Allocator) anyerror!std.json.Value = null,
 
     pub fn write(self: *ComponentInterface, writer: *Writer, cursor: *Cursor, frame: Frame) !void {
         try self.write_fn(self, writer, cursor, frame);
@@ -59,6 +61,11 @@ pub const ComponentInterface = struct {
 
     pub fn handleKey(self: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
         return self.handleKey_fn(self, key, mq);
+    }
+
+    pub fn value(self: *ComponentInterface, a: std.mem.Allocator) !?std.json.Value {
+        const f = self.value_fn orelse return null;
+        return try f(self, a);
     }
 };
 

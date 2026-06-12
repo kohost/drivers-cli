@@ -37,7 +37,7 @@ pub const TextDisplay = struct {
         try writer.writeAll(self.style.bg_color);
         try writer.writeAll(self.style.color);
         for (0..self.style.padding_left) |_| try writer.writeAll(" ");
-        if (self.binding) |b| try b.render(b.ctx, writer) else try writer.writeAll(self.source);
+        if (self.binding) |b| try b.read(b.ctx, writer) else try writer.writeAll(self.source);
         try writer.writeAll(Color.reset);
     }
 

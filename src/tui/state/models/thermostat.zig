@@ -187,6 +187,90 @@ pub const Thermostat = struct {
         return changed;
     }
 
+    // ========================================================================
+    // Clone
+    // ========================================================================
+    pub fn clone(self: *const Thermostat, alloc: std.mem.Allocator) !Thermostat {
+        // This would be a shallow copy
+        // return self;
+
+        var thermostat: Thermostat = .{
+            .alloc = alloc,
+            .id = "",
+            .name = "",
+            .driver = "",
+            .manufacturer = "",
+            .model_number = "",
+            .serial_number = "",
+            .firmware_version = "",
+            .watts = self.watts,
+            .alerts = self.alerts,
+            .offline = self.offline,
+            .current_temperature = self.current_temperature,
+            .current_humidity = self.current_humidity,
+            .min_auto_delta = self.min_auto_delta,
+            .hvac_mode = self.hvac_mode,
+            .hvac_state = self.hvac_state,
+            .fan_mode = self.fan_mode,
+            .fan_state = self.fan_state,
+            .temperature_scale = self.temperature_scale,
+            .humidity_scale = self.humidity_scale,
+            .setpoints = self.setpoints,
+            .ui_enabled = self.ui_enabled,
+            .cycle_rate = self.cycle_rate,
+            .supported_hvac_modes = &.{},
+            .supported_fan_modes = &.{},
+        };
+
+        errdefer thermostat.deinit();
+
+        thermostat.id = try dupeOwned(u8, alloc, self.id);
+        thermostat.name = try dupeOwned(u8, alloc, self.name);
+        thermostat.driver = try dupeOwned(u8, alloc, self.driver);
+        thermostat.manufacturer = try dupeOwned(u8, alloc, self.manufacturer);
+        thermostat.model_number = try dupeOwned(u8, alloc, self.model_number);
+        thermostat.serial_number = try dupeOwned(u8, alloc, self.serial_number);
+        thermostat.firmware_version = try dupeOwned(u8, alloc, self.firmware_version);
+
+        thermostat.supported_fan_modes = try dupeOwned(FanMode, alloc, self.supported_fan_modes);
+        thermostat.supported_hvac_modes = try dupeOwned(HvacMode, alloc, self.supported_hvac_modes);
+
+        return thermostat;
+    }
+
+    fn dupeOwned(comptime T: type, alloc: std.mem.Allocator, s: []const T) ![]const T {
+        return if (s.len > 0) try alloc.dupe(T, s) else &.{};
+    }
+
+    const wire_fields = .{
+        .{ "hvac_mode", "hvacMode" },
+        .{ "fan_mode", "fanMode" },
+        .{ "ui_enabled", "uiEnabled" },
+    };
+    pub fn revert(self: *Thermostat, source: *const Thermostat) void {
+        inline for (wire_fields) |f| @field(self, f[0]) = @field(source, f[0]);
+        self.setpoints = source.setpoints;
+    }
+
+    pub fn diff(self: *const Thermostat, source: *const Thermostat, a: std.mem.Allocator, out: *std.json.ObjectMap) !bool {
+        var changed = false;
+        if (self.hvac_mode != source.hvac_mode) {
+            try out.put(a, "hvacMode", .{ .string = @tagName(self.hvac_mode) });
+            changed = true;
+        }
+        if (self.fan_mode != source.fan_mode) {
+            try out.put(a, "fanMode", .{ .string = @tagName(self.fan_mode) });
+            changed = true;
+        }
+        if (self.ui_enabled != source.ui_enabled) {
+            if (self.ui_enabled) |v| {
+                try out.put(a, "uiEnabled", .{ .bool = v });
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     fn parseSetpoint(val: ?std.json.Value) ?Setpoint {
         const unwrapped = val orelse return null;
         if (unwrapped != .object) return null;

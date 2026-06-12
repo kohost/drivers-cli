@@ -33,21 +33,16 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
     var state = State.init(alloc);
     defer state.deinit();
 
-    // Canvas
-    var canvas = try Canvas.init(alloc, io, stdout);
-    defer canvas.deinit();
-
     // App
     var app = try App.init(alloc, &state, size.cols, size.rows, cfg, io);
     defer app.deinit();
 
-    if (app.transport.fetch("{\"command\":\"GetDevices\",\"data\":{}}")) |parsed| {
-        defer parsed.deinit();
-        state.loadFromJson(parsed.value) catch {};
-    }
+    try app.loadDevices();
     app.layout.view = &app.view;
 
     // Canvas
+    var canvas = try Canvas.init(alloc, io, stdout);
+    defer canvas.deinit();
     try canvas.render(&app.layout);
 
     // Posix

@@ -14,16 +14,20 @@ pub const App = struct {
     cols: u16,
     rows: u16,
     cfg: Config,
+
+    // Canonical data vs virtual data. We keep both so we can diff between them
+    // to build our data for updateDevices command.
     state: *State,
+    vstate: *State,
+
     layout: Layout,
     view: View,
     focused: ?usize,
     prev_focus: ?usize,
     input_prefix: u8,
     mq: MessageQueue,
-    pending_command: std.json.ObjectMap = .empty,
     transport: Transport,
-    pending_command_data_alloc: std.heap.ArenaAllocator,
+    command: []const u8 = "UpdateDevices",
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -37,13 +41,14 @@ pub const App = struct {
         const y = 5;
         const width = cols;
         const height = rows - 6;
-        var pending_command: std.json.ObjectMap = .empty;
-        try pending_command.put(alloc, "command", .{ .string = "UpdateDevices" });
-        try pending_command.put(alloc, "data", .{ .object = .empty });
+        const vstate = try alloc.create(State);
+        errdefer alloc.destroy(vstate);
+        vstate.* = try state.clone(alloc);
 
         return .{
             .alloc = alloc,
             .state = state,
+            .vstate = vstate,
             .cols = cols,
             .rows = rows,
             .cfg = cfg,
@@ -52,22 +57,21 @@ pub const App = struct {
             .view = .{ .driver = try DriverView.init(.{
                 .alloc = alloc,
                 .state = state,
+                .vstate = vstate,
                 .appCfg = cfg,
                 .frame = .{ .x = x, .y = y, .w = width, .h = height },
             }) },
             .focused = 0,
             .prev_focus = 0,
             .input_prefix = 0,
-            .pending_command = pending_command,
             .transport = Transport.init(alloc, cfg, io),
-            .pending_command_data_alloc = std.heap.ArenaAllocator.init(alloc),
         };
     }
 
     pub fn deinit(self: *App) void {
         self.view.deinit();
-        self.pending_command.deinit(self.alloc);
-        self.pending_command_data_alloc.deinit();
+        self.vstate.deinit(); // frees the devices/strings inside the State
+        self.alloc.destroy(self.vstate); // frees the State slot itself
     }
 
     pub fn resize(self: *App, cols: u16, rows: u16) !void {
@@ -83,6 +87,7 @@ pub const App = struct {
             .driver = try DriverView.init(.{
                 .alloc = self.alloc,
                 .state = self.state,
+                .vstate = self.vstate,
                 .appCfg = self.cfg,
                 .frame = .{ .x = x, .y = y, .w = cols, .h = height },
             }),
@@ -155,28 +160,29 @@ pub const App = struct {
                 },
                 // TODO: Silently swallowing errors with catch{} will want to surface.
                 .send_command => self.executeCommand() catch {},
-                .command_changed => |name| self.pending_command.put(self.alloc, "command", .{ .string = name }) catch {},
-                .data_changed => |data| {
-                    const a = self.pending_command_data_alloc.allocator();
-                    // Collection (e.g. devices) holds an array of entities.
-                    const coll = self.pending_command.getPtr("data").?.object.getOrPutValue(a, @tagName(data.collection), .{ .array = std.json.Array.init(a) }) catch continue;
-                    const entities = &coll.value_ptr.array;
-
-                    // Find the entity by id, else create one carrying its id.
-                    const entity = for (entities.items) |*e| {
-                        if (e.object.get("id")) |id| {
-                            if (std.mem.eql(u8, id.string, data.id)) break e;
-                        }
-                    } else blk: {
-                        var obj = std.json.Value{ .object = .empty };
-                        obj.object.put(a, "id", .{ .string = a.dupe(u8, data.id) catch continue }) catch continue;
-                        entities.append(obj) catch continue;
-                        break :blk &entities.items[entities.items.len - 1];
-                    };
-
-                    // Merge the wire fragment into the entity (accumulates across edits).
-                    mergeInto(a, &entity.object, data.data) catch continue;
-                },
+                .command_changed => |name| self.command = name,
+                .data_changed => {},
+                // .data_changed => |data| {
+                //     const a = self.pending_command_data_alloc.allocator();
+                //     // Collection (e.g. devices) holds an array of entities.
+                //     const coll = self.pending_command.getPtr("data").?.object.getOrPutValue(a, @tagName(data.collection), .{ .array = std.json.Array.init(a) }) catch continue;
+                //     const entities = &coll.value_ptr.array;
+                //
+                //     // Find the entity by id, else create one carrying its id.
+                //     const entity = for (entities.items) |*e| {
+                //         if (e.object.get("id")) |id| {
+                //             if (std.mem.eql(u8, id.string, data.id)) break e;
+                //         }
+                //     } else blk: {
+                //         var obj = std.json.Value{ .object = .empty };
+                //         obj.object.put(a, "id", .{ .string = a.dupe(u8, data.id) catch continue }) catch continue;
+                //         entities.append(obj) catch continue;
+                //         break :blk &entities.items[entities.items.len - 1];
+                //     };
+                //
+                //     // Merge the wire fragment into the entity (accumulates across edits).
+                //     mergeInto(a, &entity.object, data.data) catch continue;
+                // },
             }
         }
 
@@ -202,6 +208,7 @@ pub const App = struct {
                 if (DriverView.init(.{
                     .alloc = self.alloc,
                     .state = self.state,
+                    .vstate = self.vstate,
                     .appCfg = self.cfg,
                     .frame = .{ .x = 1, .y = 5, .w = self.cols, .h = self.rows - 6 },
                 })) |dv| {
@@ -215,10 +222,21 @@ pub const App = struct {
     }
 
     fn executeCommand(self: *App) !void {
+        var arena = std.heap.ArenaAllocator.init(self.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        var cmd: std.json.ObjectMap = .empty;
+        try cmd.put(a, "command", .{ .string = self.command });
+        var data: std.json.ObjectMap = .empty;
+        try data.put(a, "devices", try self.vstate.diff(self.state, a));
+        try cmd.put(a, "data", .{ .object = data });
+
+        const root: std.json.Value = .{ .object = cmd };
+
         var req_wa: std.Io.Writer.Allocating = std.Io.Writer.Allocating.init(self.alloc);
         defer req_wa.deinit();
 
-        const root: std.json.Value = .{ .object = self.pending_command };
         const formatter = std.json.fmt(root, .{ .whitespace = .indent_2 });
         try formatter.format(&req_wa.writer);
 
@@ -238,11 +256,25 @@ pub const App = struct {
 
             try self.view.setResponse(res_wa.written());
             _ = self.state.update(parsed.value);
-        }
 
-        // Staged edits were sent. Reclaim arean and reset data to {}
-        _ = self.pending_command_data_alloc.reset(.retain_capacity);
-        self.pending_command.getPtr("data").?.* = .{ .object = .empty };
+            for (self.vstate.devices.items) |*vd| {
+                if (self.state.getDevice(vd.id())) |sd| vd.revert(sd);
+            }
+        }
+    }
+
+    pub fn loadDevices(self: *App) !void {
+        const getAll = "{\"command\":\"GetDevices\",\"data\":{}}";
+        if (self.transport.fetch(getAll)) |parsed| {
+            defer parsed.deinit();
+            self.state.loadFromJson(parsed.value) catch {};
+            try self.sync();
+        }
+    }
+
+    pub fn sync(self: *App) !void {
+        self.vstate.deinit();
+        self.vstate.* = try self.state.clone(self.alloc);
     }
 };
 
