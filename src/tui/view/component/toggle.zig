@@ -1,48 +1,67 @@
 const std = @import("std");
-const ComponentInterface = @import("../component.zig").ComponentInterface;
+const Component = @import("../Component.zig");
+const Writer = std.Io.Writer;
 const Color = @import("../../color.zig");
-const Cursor = @import("../component.zig").Cursor;
-const Frame = @import("../component.zig").Frame;
-const KeyResult = @import("../component.zig").KeyResult;
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
-const Style = @import("../component.zig").Style;
+const Style = @import("../_component.zig").Style;
 const utils = @import("../../utils.zig");
 
 pub const Toggle = struct {
-    interface: ComponentInterface,
-    vsource: *?bool, // mutable: points at a vstate field
-    source: *const ?bool, // mutable: points at a vstate field
-    active: []const u8 = "✔",
-    inactive: []const u8 = "☓",
-    style: Style,
+    const Self = @This();
 
-    pub fn init(vsource: *?bool, source: *const ?bool, style: Style, active: []const u8, inactive: []const u8) Toggle {
-        return .{ .active = active, .inactive = inactive, .interface = .{
-            .write_fn = write,
-            .handleKey_fn = handleKey,
-        }, .vsource = vsource, .source = source, .style = style };
+    vsource: *?bool,
+    source: *const ?bool,
+    style: Style,
+    active: []const u8,
+    inactive: []const u8,
+
+    const Options = struct {
+        vsource: *?bool,
+        source: *const ?bool,
+        style: Style = .{
+            .color = Color.green,
+            .secondary_color = Color.red,
+            .tertiary_color = Color.yellow,
+        },
+        active: []const u8 = "✔",
+        inactive: []const u8 = "✗",
+    };
+
+    pub fn init(opts: Options) Self {
+        return .{
+            .vsource = opts.vsource,
+            .source = opts.source,
+            .style = opts.style,
+            .active = opts.active,
+            .inactive = opts.inactive,
+        };
     }
 
-    fn write(
-        interface: *ComponentInterface,
-        writer: *std.Io.Writer,
-        _: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
-        const self: *Toggle = @fieldParentPtr("interface", interface);
-        try utils.moveTo(writer, frame.x, frame.y);
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+        } };
+    }
+
+    fn write(ptr: *anyopaque, w: *Writer, _: *Cursor, f: Frame) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        try utils.moveTo(w, f.x, f.y);
 
         const active = self.vsource.*.?;
         const dirty = self.source.*.? != self.vsource.*.?;
         const color = if (dirty) self.style.tertiary_color else if (active) self.style.color else self.style.secondary_color;
 
-        try writer.writeAll(color);
-        try writer.writeAll(if (active) self.active else self.inactive);
-        try writer.writeAll(Color.reset);
+        try w.writeAll(color);
+        try w.writeAll(if (active) self.active else self.inactive);
+        try w.writeAll(Color.reset);
     }
 
-    fn handleKey(interface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Toggle = @fieldParentPtr("interface", interface);
+    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         return switch (key) {
             'j' => .focus_next,
             'k' => .focus_prev,

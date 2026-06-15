@@ -2,15 +2,17 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const icons = @import("../../icons.zig");
 const utils = @import("../../utils.zig");
-const ComponentInterface = @import("../component.zig").ComponentInterface;
-const Cursor = @import("../component.zig").Cursor;
-const Frame = @import("../component.zig").Frame;
-const KeyResult = @import("../component.zig").KeyResult;
-const Style = @import("../component.zig").Style;
+const Component = @import("../Component.zig");
+const Writer = std.Io.Writer;
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
+const Style = @import("../_component.zig").Style;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const Select = struct {
-    interface: ComponentInterface,
+    const Self = @This();
+
     source: []const u8,
     options: []const []const u8,
     selected: usize,
@@ -30,10 +32,6 @@ pub const Select = struct {
             }
         }
         return .{
-            .interface = .{
-                .write_fn = write,
-                .handleKey_fn = handleKey,
-            },
             .source = source,
             .options = options,
             .selected = selected,
@@ -45,13 +43,15 @@ pub const Select = struct {
         };
     }
 
-    fn write(
-        iface: *ComponentInterface,
-        writer: *std.Io.Writer,
-        _: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
-        const self: *Select = @fieldParentPtr("interface", iface);
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+        } };
+    }
+
+    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         const x = frame.x;
         const y = frame.y;
 
@@ -131,8 +131,8 @@ pub const Select = struct {
         }
     }
 
-    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Select = @fieldParentPtr("interface", iface);
+    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
 
         if (!self.open) {
             switch (key) {

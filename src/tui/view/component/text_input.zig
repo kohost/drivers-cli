@@ -1,123 +1,125 @@
 const std = @import("std");
 const utils = @import("../../utils.zig");
 const Color = @import("../../color.zig");
-const ComponentInterface = @import("../component.zig").ComponentInterface;
-const Binding = @import("../component.zig").Binding;
-const Cursor = @import("../component.zig").Cursor;
-const Frame = @import("../component.zig").Frame;
-const KeyResult = @import("../component.zig").KeyResult;
+const Component = @import("../Component.zig");
+const Writer = std.Io.Writer;
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
-pub const TextInput = struct {
-    interface: ComponentInterface,
-    source: ?Binding = null,
-    vsource: ?Binding = null,
-    buf: [128]u8 = undefined,
-    buf_len: u8 = 0,
-    cursor: u8 = 0,
-    editing: bool = false,
+pub fn TextInput(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        source: *const T,
+        vsource: *T,
+        buf: [128]u8 = undefined,
+        buf_len: u8 = 0,
+        cursor: u8 = 0,
+        editing: bool = false,
 
-    pub fn init() TextInput {
-        return .{
-            .interface = .{
-                .write_fn = write,
-                .handleKey_fn = handleKey,
-            },
-        };
-    }
-
-    fn write(iface: *ComponentInterface, writer: *std.Io.Writer, cursor: *Cursor, frame: Frame) anyerror!void {
-        const self: *TextInput = @fieldParentPtr("interface", iface);
-        try utils.moveTo(writer, frame.x, frame.y);
-
-        if (self.editing) {
-            try writer.writeAll(Color.yellow);
-            try writer.writeAll(self.buf[0..self.buf_len]);
-            try writer.writeAll(Color.reset);
-            cursor.x = frame.x + self.cursor;
-            cursor.y = frame.y;
-            cursor.visible = true;
-            return;
+        pub fn init(source: *const T, vsource: *T) Self {
+            return .{ .source = source, .vsource = vsource };
         }
 
-        try writer.writeAll(if (self.isDirty()) Color.yellow else Color.text);
-        if (self.vsource) |b| try b.read(b.ctx, writer);
-        try writer.writeAll(Color.reset);
-    }
+        pub fn component(self: *Self) Component {
+            return .{ .ptr = self, .vtable = &.{
+                .write = write,
+                .handleKey = handleKey,
+            } };
+        }
 
-    /// Since this component is generic and will work on multiple types like
-    /// []const u8, enums, floats, integers we convert everything into text
-    /// and compare the strings.
-    fn isDirty(self: *TextInput) bool {
-        const v = self.vsource orelse return false;
-        const s = self.source orelse return false;
-        var va: [128]u8 = undefined;
-        var sa: [128]u8 = undefined;
-        var vw = std.Io.Writer.fixed(&va);
-        var sw = std.Io.Writer.fixed(&sa);
+        fn write(ptr: *anyopaque, w: *Writer, c: *Cursor, f: Frame) anyerror!void {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+            try utils.moveTo(w, f.x, f.y);
 
-        v.read(v.ctx, &vw) catch return false;
-        s.read(s.ctx, &sw) catch return false;
-        return !std.mem.eql(u8, va[0..vw.end], sa[0..sw.end]);
-    }
+            if (self.editing) {
+                try w.writeAll(Color.yellow);
+                try w.writeAll(self.buf[0..self.buf_len]);
+                try w.writeAll(Color.reset);
+                c.x = f.x + self.cursor;
+                c.y = f.y;
+                c.visible = true;
+                return;
+            }
 
-    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *TextInput = @fieldParentPtr("interface", iface);
+            try w.writeAll(if (self.isDirty()) Color.yellow else Color.text);
+            try format(self.vsource.*, w);
+            try w.writeAll(Color.reset);
+        }
 
-        if (!self.editing) {
+        fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+
+            if (!self.editing) {
+                switch (key) {
+                    'l', '\r', '\n' => {
+                        var fw = Writer.fixed(&self.buf);
+                        format(self.vsource.*, &fw) catch {};
+                        self.buf_len = @intCast(fw.end);
+                        self.cursor = self.buf_len;
+                        self.editing = true;
+                        mq.post(.render);
+                        return .consumed;
+                    },
+                    else => return .ignored,
+                }
+            }
+
             switch (key) {
-                'l', '\r', '\n' => {
-                    const v = self.currentValue(&self.buf); // seed from live value
-                    self.buf_len = @intCast(v.len);
-                    self.cursor = self.buf_len;
-                    self.editing = true;
+                0x1b => { // Esc: discard
+                    self.editing = false;
                     mq.post(.render);
                     return .consumed;
                 },
-                else => return .ignored,
+                '\r', '\n' => { // Enter — commit; stay optimistic until model catches up
+                    self.editing = false;
+                    if (parse(self.buf[0..self.buf_len])) |v| self.vsource.* = v;
+                    mq.post(.render);
+                    return .changed;
+                },
+                0x7f => { // Backspace
+                    if (self.cursor > 0) {
+                        self.cursor -= 1;
+                        @memmove(self.buf[self.cursor .. self.buf_len - 1], self.buf[self.cursor + 1 .. self.buf_len]);
+                        self.buf_len -= 1;
+                        mq.post(.render);
+                    }
+                    return .consumed;
+                },
+                else => {
+                    if (key >= 0x20 and key < 0x7f and self.buf_len < self.buf.len) {
+                        @memmove(self.buf[self.cursor + 1 .. self.buf_len + 1], self.buf[self.cursor..self.buf_len]);
+                        self.buf[self.cursor] = key;
+                        self.buf_len += 1;
+                        self.cursor += 1;
+                        mq.post(.render);
+                    }
+                    return .consumed;
+                },
             }
         }
 
-        switch (key) {
-            0x1b => { // Esc: discard
-                self.editing = false;
-                mq.post(.render);
-                return .consumed;
-            },
-            '\r', '\n' => { // Enter — commit; stay optimistic until model catches up
-                self.editing = false;
-                if (self.vsource) |b| {
-                    if (b.write) |w| w(b.ctx, self.buf[0..self.buf_len]) catch {};
-                }
-                mq.post(.render);
-                return .changed;
-            },
-            0x7f => { // Backspace
-                if (self.cursor > 0) {
-                    self.cursor -= 1;
-                    @memmove(self.buf[self.cursor .. self.buf_len - 1], self.buf[self.cursor + 1 .. self.buf_len]);
-                    self.buf_len -= 1;
-                    mq.post(.render);
-                }
-                return .consumed;
-            },
-            else => {
-                if (key >= 0x20 and key < 0x7f and self.buf_len < self.buf.len) {
-                    @memmove(self.buf[self.cursor + 1 .. self.buf_len + 1], self.buf[self.cursor..self.buf_len]);
-                    self.buf[self.cursor] = key;
-                    self.buf_len += 1;
-                    self.cursor += 1;
-                    mq.post(.render);
-                }
-                return .consumed;
-            },
+        fn format(v: T, w: *Writer) !void {
+            switch (@typeInfo(T)) {
+                .int, .float => try w.print("{d}", .{v}),
+                .@"enum" => try w.writeAll(@tagName(v)),
+                .pointer => try w.writeAll(v),
+                else => @compileError("TextInput: unsupported type " ++ @typeName(T)),
+            }
         }
-    }
 
-    fn currentValue(self: *TextInput, out: []u8) []const u8 {
-        const b = self.vsource orelse return out[0..0];
-        var fw = std.Io.Writer.fixed(out);
-        b.read(b.ctx, &fw) catch {};
-        return out[0..fw.end];
-    }
-};
+        fn parse(text: []const u8) ?T {
+            return switch (@typeInfo(T)) {
+                .int => std.fmt.parseInt(T, text, 10) catch null,
+                .float => std.fmt.parseFloat(T, text) catch null,
+                .@"enum" => std.meta.stringToEnum(T, text),
+                else => null,
+            };
+        }
+
+        fn isDirty(self: *Self) bool {
+            return self.source.* != self.vsource.*;
+        }
+    };
+}

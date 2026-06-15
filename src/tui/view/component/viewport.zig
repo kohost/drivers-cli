@@ -1,17 +1,19 @@
 const std = @import("std");
-const ComponentInterface = @import("../component.zig").ComponentInterface;
+const Component = @import("../Component.zig");
+const Writer = std.Io.Writer;
 const Color = @import("../../color.zig");
-const Cursor = @import("../component.zig").Cursor;
-const Frame = @import("../component.zig").Frame;
-const KeyResult = @import("../component.zig").KeyResult;
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
-const Style = @import("../component.zig").Style;
+const Style = @import("../_component.zig").Style;
 const utils = @import("../../utils.zig");
 
 /// A scrollable window onto `source` text that may be taller than its frame.
 /// Pushed content (set `source` directly); j/k/gg/G scroll the viewport.
 pub const Viewport = struct {
-    interface: ComponentInterface,
+    const Self = @This();
+
     source: []const u8,
     style: Style,
     overflowed: bool = false,
@@ -23,19 +25,18 @@ pub const Viewport = struct {
     prev_key: u8 = 0,
 
     pub fn init(source: []const u8, style: Style) Viewport {
-        return .{ .interface = .{
-            .write_fn = write,
-            .handleKey_fn = handleKey,
-        }, .source = source, .style = style };
+        return .{ .source = source, .style = style };
     }
 
-    fn write(
-        interface: *ComponentInterface,
-        writer: *std.Io.Writer,
-        _: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
-        const self: *Viewport = @fieldParentPtr("interface", interface);
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+        } };
+    }
+
+    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
 
         self.visible_h = frame.h;
         self.total_lines = countLines(self.source);
@@ -75,8 +76,8 @@ pub const Viewport = struct {
         }
     }
 
-    fn handleKey(interface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Viewport = @fieldParentPtr("interface", interface);
+    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         defer self.prev_key = key;
 
         if (!self.overflowed) {

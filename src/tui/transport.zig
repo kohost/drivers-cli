@@ -12,6 +12,7 @@ pub const Transport = struct {
     }
 
     pub fn fetch(self: *Transport, bytes: []const u8) ?std.json.Parsed(std.json.Value) {
+        std.debug.print("Lifecycle::transport.sendCmd -> [{s}]\n", .{bytes});
         const stream = self.connect() catch return null;
         defer stream.close(self.io);
         const raw = self.sendCmd(stream, bytes) catch return null;
@@ -27,6 +28,7 @@ pub const Transport = struct {
             }
         }
 
+        std.debug.print("Lifecycle::transport.fetch <- [{f}]\n", .{std.json.fmt(parsed.value, .{})});
         return parsed;
     }
 

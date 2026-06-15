@@ -1,38 +1,38 @@
 const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
-const ComponentInterface = @import("../component.zig").ComponentInterface;
-const Frame = @import("../component.zig").Frame;
-const Cursor = @import("../component.zig").Cursor;
-const KeyResult = @import("../component.zig").KeyResult;
-const Style = @import("../component.zig").Style;
+const Component = @import("../Component.zig");
+const Writer = std.Io.Writer;
+const Frame = Component.Frame;
+const Cursor = @import("../../canvas.zig").Cursor;
+const KeyResult = @import("../../input.zig").KeyResult;
+const Style = @import("../_component.zig").Style;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const Button = struct {
-    interface: ComponentInterface,
+    const Self = @This();
+
     label: []const u8,
     focused: bool,
     style: Style,
 
     pub fn init(label: []const u8, style: Style) Button {
         return .{
-            .interface = .{
-                .write_fn = write,
-                .handleKey_fn = handleKey,
-            },
             .label = label,
             .style = style,
             .focused = false,
         };
     }
 
-    pub fn write(
-        interface: *ComponentInterface,
-        writer: *std.Io.Writer,
-        cursor: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
-        const self: *Button = @fieldParentPtr("interface", interface);
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+        } };
+    }
+
+    pub fn write(ptr: *anyopaque, writer: *Writer, cursor: *Cursor, frame: Frame) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         _ = cursor;
 
         var color = if (self.style.color.len > 0) self.style.color else Color.text;
@@ -52,8 +52,8 @@ pub const Button = struct {
         try writer.writeAll(Color.reset);
     }
 
-    pub fn handleKey(interface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Button = @fieldParentPtr("interface", interface);
+    pub fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         _ = self;
 
         switch (key) {

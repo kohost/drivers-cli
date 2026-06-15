@@ -1,8 +1,7 @@
 const std = @import("std");
 const DriverView = @import("view/driver.zig").DriverView;
-const comp = @import("view/component.zig");
-const KeyResult = comp.KeyResult;
-const Cursor = comp.Cursor;
+const KeyResult = @import("input.zig").KeyResult;
+const Cursor = @import("canvas.zig").Cursor;
 const MessageQueue = @import("message_queue.zig").MessageQueue;
 
 pub const View = union(enum) {

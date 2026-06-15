@@ -1,11 +1,10 @@
 const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
-const comp = @import("../component.zig");
-const ComponentInterface = comp.ComponentInterface;
-const Cursor = comp.Cursor;
-const Frame = comp.Frame;
-const KeyResult = comp.KeyResult;
+const Component = @import("../Component.zig");
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Writer = std.Io.Writer;
 
@@ -46,7 +45,8 @@ pub const Cell = struct {
 pub const Row = []const Cell;
 
 pub const Table = struct {
-    interface: ComponentInterface,
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     headers: []const Cell,
     rows: std.ArrayList(Row),
@@ -61,10 +61,6 @@ pub const Table = struct {
 
     pub fn init(alloc: std.mem.Allocator, headers: []const Cell) Table {
         return .{
-            .interface = .{
-                .write_fn = write,
-                .handleKey_fn = handleKey,
-            },
             .alloc = alloc,
             .headers = headers,
             .rows = .empty,
@@ -99,12 +95,19 @@ pub const Table = struct {
         self.rows.clearRetainingCapacity();
     }
 
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+        } };
+    }
+
     pub fn handleKeyDirect(self: *Table, key: u8, mq: *MessageQueue) KeyResult {
         return handleKeyImpl(self, key, mq);
     }
 
-    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *Table = @fieldParentPtr("interface", iface);
+    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         return handleKeyImpl(self, key, mq);
     }
 
@@ -188,13 +191,8 @@ pub const Table = struct {
         return self.filter_buf[0..self.filter_len];
     }
 
-    fn write(
-        iface: *ComponentInterface,
-        writer: *Writer,
-        _: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
-        const self: *Table = @fieldParentPtr("interface", iface);
+    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         const x = frame.x;
         const y = frame.y;
         const h = frame.h;

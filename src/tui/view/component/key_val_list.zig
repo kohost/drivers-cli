@@ -2,16 +2,17 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
 const Writer = std.Io.Writer;
-const ComponentInterface = @import("../component.zig").ComponentInterface;
-const Cursor = @import("../component.zig").Cursor;
-const Frame = @import("../component.zig").Frame;
-const KeyResult = @import("../component.zig").KeyResult;
+const Component = @import("../Component.zig");
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
-pub const KeyVal = struct { label: []const u8, value: *ComponentInterface };
+pub const KeyVal = struct { label: []const u8, value: Component };
 
 pub const KeyValList = struct {
-    interface: ComponentInterface,
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     rows: std.ArrayList(KeyVal),
     focused: ?usize,
@@ -19,10 +20,6 @@ pub const KeyValList = struct {
 
     pub fn init(alloc: std.mem.Allocator) KeyValList {
         return .{
-            .interface = .{
-                .write_fn = write,
-                .handleKey_fn = handleKey,
-            },
             .alloc = alloc,
             .rows = .empty,
             .focused = null,
@@ -34,26 +31,28 @@ pub const KeyValList = struct {
         self.rows.deinit(self.alloc);
     }
 
-    pub fn addRow(self: *KeyValList, label: []const u8, value: *ComponentInterface) !void {
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+        } };
+    }
+
+    pub fn addRow(self: *KeyValList, label: []const u8, value: Component) !void {
         try self.rows.append(self.alloc, .{ .label = label, .value = value });
     }
 
     pub fn get(self: *KeyValList, comptime T: type, label: []const u8) ?*T {
         for (self.rows.items) |item| {
             if (std.mem.eql(u8, item.label, label)) {
-                return @fieldParentPtr("interface", item.value);
+                return @ptrCast(@alignCast(item.value.ptr));
             }
         }
         return null;
     }
 
-    fn write(
-        iface: *ComponentInterface,
-        writer: *Writer,
-        cursor: *Cursor,
-        frame: Frame,
-    ) anyerror!void {
-        const self: *KeyValList = @fieldParentPtr("interface", iface);
+    fn write(ptr: *anyopaque, writer: *Writer, cursor: *Cursor, frame: Frame) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         const rows = self.rows.items;
 
         var max_label: u16 = 0;
@@ -91,8 +90,8 @@ pub const KeyValList = struct {
         }
     }
 
-    fn handleKey(iface: *ComponentInterface, key: u8, mq: *MessageQueue) KeyResult {
-        const self: *KeyValList = @fieldParentPtr("interface", iface);
+    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
         defer self.prev_key = key;
         const rows = self.rows.items;
 

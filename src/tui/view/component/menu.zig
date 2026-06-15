@@ -1,7 +1,7 @@
 const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
-const KeyResult = @import("../component.zig").KeyResult;
+const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const Menu = struct {

@@ -268,7 +268,28 @@ pub const Thermostat = struct {
                 changed = true;
             }
         }
+
+        // Setpoints
+        var sp_obj: std.json.ObjectMap = .empty;
+        if (try diffSetpoint(a, self.setpoints.heat, source.setpoints.heat)) |v| try sp_obj.put(a, "heat", v);
+        if (try diffSetpoint(a, self.setpoints.cool, source.setpoints.cool)) |v| try sp_obj.put(a, "cool", v);
+        if (try diffSetpoint(a, self.setpoints.auto, source.setpoints.auto)) |v| try sp_obj.put(a, "auto", v);
+        if (sp_obj.count() > 0) {
+            try out.put(a, "setpoints", .{ .object = sp_obj });
+            changed = true;
+        }
+
         return changed;
+    }
+
+    fn diffSetpoint(a: std.mem.Allocator, self_sp: ?Setpoint, source_sp: ?Setpoint) !?std.json.Value {
+        const sp = self_sp orelse return null;
+        var obj: std.json.ObjectMap = .empty;
+        if (source_sp == null or sp.value != source_sp.?.value) try obj.put(a, "value", .{ .float = sp.value });
+        if (source_sp == null or sp.min != source_sp.?.min) try obj.put(a, "min", .{ .float = sp.min });
+        if (source_sp == null or sp.max != source_sp.?.max) try obj.put(a, "max", .{ .float = sp.max });
+        if (obj.count() == 0) return null;
+        return .{ .object = obj };
     }
 
     fn parseSetpoint(val: ?std.json.Value) ?Setpoint {

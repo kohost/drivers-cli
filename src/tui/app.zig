@@ -5,7 +5,7 @@ const Layout = @import("view/layout.zig").Layout;
 const View = @import("view.zig").View;
 const DriverView = @import("view/driver.zig").DriverView;
 const MessageQueue = @import("./message_queue.zig").MessageQueue;
-const KeyResult = @import("view/component.zig").KeyResult;
+const KeyResult = @import("input.zig").KeyResult;
 const Allocator = std.mem.Allocator;
 const Transport = @import("transport.zig").Transport;
 
@@ -13,7 +13,7 @@ pub const App = struct {
     alloc: Allocator,
     cols: u16,
     rows: u16,
-    cfg: Config,
+    cfg: *const Config,
 
     // Canonical data vs virtual data. We keep both so we can diff between them
     // to build our data for updateDevices command.
@@ -34,7 +34,7 @@ pub const App = struct {
         state: *State,
         cols: u16,
         rows: u16,
-        cfg: Config,
+        cfg: *const Config,
         io: std.Io,
     ) !App {
         const x = 1;
@@ -64,7 +64,7 @@ pub const App = struct {
             .focused = 0,
             .prev_focus = 0,
             .input_prefix = 0,
-            .transport = Transport.init(alloc, cfg, io),
+            .transport = Transport.init(alloc, cfg.*, io),
         };
     }
 
@@ -131,7 +131,6 @@ pub const App = struct {
         }
 
         for (self.mq.drain()) |msg| {
-            std.debug.print("App:handleKey:mq: {s}\n", .{@tagName(msg)});
             switch (msg) {
                 .quit => return false,
                 .open_input => |prefix| {

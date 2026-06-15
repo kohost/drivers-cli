@@ -34,7 +34,7 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
     defer state.deinit();
 
     // App
-    var app = try App.init(alloc, &state, size.cols, size.rows, cfg, io);
+    var app = try App.init(alloc, &state, size.cols, size.rows, &cfg, io);
     defer app.deinit();
 
     try app.loadDevices();

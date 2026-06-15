@@ -6,16 +6,17 @@ const State = @import("../state.zig").State;
 const Panel = @import("component/panel.zig").Panel;
 const Cell = @import("component/table.zig").Cell;
 const Table = @import("component/table.zig").Table;
-const Cursor = @import("component.zig").Cursor;
-const Frame = @import("component.zig").Frame;
-const KeyResult = @import("component.zig").KeyResult;
+const Component = @import("Component.zig");
+const Cursor = @import("../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../input.zig").KeyResult;
 const MessageQueue = @import("../message_queue.zig").MessageQueue;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const Select = @import("component/select.zig").Select;
 const Button = @import("component/button.zig").Button;
 const TextDisplay = @import("component/text_display.zig").TextDisplay;
 const Viewport = @import("component/viewport.zig").Viewport;
-const Style = @import("component.zig").Style;
+const Style = @import("_component.zig").Style;
 const icons = @import("../icons.zig");
 const commands = @import("../../commands.zig");
 const Writer = std.Io.Writer;
@@ -44,7 +45,7 @@ pub const DriverView = struct {
     list_selected: ?usize,
     thermostat_view: ThermostatView,
     command_select: Select,
-    url: TextDisplay,
+    url: TextDisplay([]const u8),
     send_button: Button,
     frame: Frame,
     req_text: []const u8,
@@ -56,7 +57,7 @@ pub const DriverView = struct {
         alloc: std.mem.Allocator,
         state: *State,
         vstate: *State,
-        appCfg: AppConfig,
+        appCfg: *const AppConfig,
         frame: Frame,
     };
 
@@ -94,12 +95,12 @@ pub const DriverView = struct {
                 .padding_left = 1,
                 .padding_right = 1,
             }),
-            .url = TextDisplay.init(host_label, .{
-                // .color = Color.subtext0,
+            // source wired in write() once the view is at its final address
+            .url = .{ .source = undefined, .style = .{
                 .color = Color.flamingo,
                 .bg_color = Color.bg_mantle,
                 .padding_left = 1,
-            }),
+            } },
             .send_button = Button.init(
                 icons.send ++ " Send",
                 .{
@@ -142,6 +143,7 @@ pub const DriverView = struct {
     }
 
     pub fn write(self: *DriverView, writer: *Writer, cursor: *Cursor) !void {
+        self.url.source = &self.host_label;
         if (self.depth == 0) {
             // Get manufacturer
             const manufacturer = if (self.state.system) |sys| sys.manufacturer else "Unknown";
@@ -161,7 +163,7 @@ pub const DriverView = struct {
                     .{ .value = .{ .string = if (device.offline()) "✗" else "✔" }, .style = if (device.offline()) Color.red else Color.green },
                 });
             }
-            self.panels[0].setChildren(&.{&self.table.interface});
+            self.panels[0].setChildren(&.{self.table.component()});
 
             // Search label
             const filter = self.table.getFilter();
@@ -176,7 +178,7 @@ pub const DriverView = struct {
         } else if (self.depth == 1) {
             const manufacturer = if (self.state.system) |sys| sys.manufacturer else "Unknown";
 
-            self.panels[0].setChildren(&.{&self.thermostat_view.interface});
+            self.panels[0].setChildren(&.{self.thermostat_view.component()});
 
             // Panel label: manufacturer/device-id
             var title_buf: [128]u8 = undefined;
@@ -192,11 +194,11 @@ pub const DriverView = struct {
 
         // Request
         self.req_display.source = self.req_text;
-        self.panels[2].setChildren(&.{&self.req_display.interface});
+        self.panels[2].setChildren(&.{self.req_display.component()});
 
         // Response
         self.res_display.source = self.res_text;
-        self.panels[3].setChildren(&.{&self.res_display.interface});
+        self.panels[3].setChildren(&.{self.res_display.component()});
 
         // Draw panels
         // Panel 0: full width, top 50%
@@ -210,24 +212,24 @@ pub const DriverView = struct {
         const right_x = f.x + left_w;
         const right_half = bottom_h / 2;
 
-        try self.panels[0].interface.write(writer, cursor, .{ .x = f.x, .y = f.y, .w = f.w, .h = half });
+        try self.panels[0].component().write(writer, cursor, .{ .x = f.x, .y = f.y, .w = f.w, .h = half });
         // Panel 1: left 20%, bottom
-        try self.panels[1].interface.write(writer, cursor, .{ .x = f.x, .y = bottom_y, .w = left_w, .h = bottom_h });
+        try self.panels[1].component().write(writer, cursor, .{ .x = f.x, .y = bottom_y, .w = left_w, .h = bottom_h });
         // Panel 2: right 80%, top-right
-        try self.panels[2].interface.write(writer, cursor, .{ .x = right_x, .y = bottom_y, .w = right_w, .h = right_half });
+        try self.panels[2].component().write(writer, cursor, .{ .x = right_x, .y = bottom_y, .w = right_w, .h = right_half });
         // Panel 3: right 80%, bottom-right
-        try self.panels[3].interface.write(writer, cursor, .{ .x = right_x, .y = bottom_y + right_half, .w = right_w, .h = bottom_h - right_half });
+        try self.panels[3].component().write(writer, cursor, .{ .x = right_x, .y = bottom_y + right_half, .w = right_w, .h = bottom_h - right_half });
         // Command row - draw bg_mantle across, then select/button draw on top
         try utils.moveTo(writer, f.x + 1, select_y);
         try writer.writeAll(Color.bg_mantle);
         for (0..f.w -| 2) |_| try writer.writeAll(" ");
         try writer.writeAll(Color.reset);
         // Command row components
-        try self.command_select.interface.write(writer, cursor, .{ .x = f.x + 1, .y = select_y, .w = f.w, .h = 1 });
+        try self.command_select.component().write(writer, cursor, .{ .x = f.x + 1, .y = select_y, .w = f.w, .h = 1 });
 
         // Url
         // try self.url.component().write(writer, )
-        try self.url.interface.write(writer, cursor, .{
+        try self.url.component().write(writer, cursor, .{
             .x = f.x + 22, //
             .y = select_y,
             .w = f.w,
@@ -236,7 +238,7 @@ pub const DriverView = struct {
 
         // Send button, right-justified
         const btn_x = f.x + f.w - 9;
-        try self.send_button.interface.write(writer, cursor, .{
+        try self.send_button.component().write(writer, cursor, .{
             .x = btn_x,
             .y = select_y,
             .w = 10,
@@ -250,7 +252,7 @@ pub const DriverView = struct {
             const result = if (self.depth == 0)
                 self.table.handleKeyDirect(key, mq)
             else
-                self.thermostat_view.interface.handleKey(key, mq);
+                self.thermostat_view.component().handleKey(key, mq);
             switch (result) {
                 .dive_in => {
                     if (self.depth == 0) {
@@ -310,7 +312,7 @@ pub const DriverView = struct {
             // Forward keys to Select when focused
             if (f == .command_select) {
                 const was_open = self.command_select.open;
-                const select_result = self.command_select.interface.handleKey(key, mq);
+                const select_result = self.command_select.component().handleKey(key, mq);
                 if (select_result == .consumed) {
                     const just_committed = was_open and !self.command_select.open and self.command_select.selected != self.command_select.previous;
                     if (just_committed) {
@@ -320,12 +322,12 @@ pub const DriverView = struct {
                 }
             }
             if (f == .send_button) {
-                const button_result = self.send_button.interface.handleKey(key, mq);
+                const button_result = self.send_button.component().handleKey(key, mq);
                 if (button_result == .consumed) return .consumed;
             }
             if (f == .request or f == .response) {
                 const display = if (f == .request) &self.req_display else &self.res_display;
-                const r = display.interface.handleKey(key, mq);
+                const r = display.component().handleKey(key, mq);
                 switch (r) {
                     .consumed => return .consumed,
                     .focus_next, .focus_prev => {}, // fall through to spatial nav

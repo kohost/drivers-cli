@@ -20,7 +20,14 @@ pub const Canvas = struct {
     }
 
     pub fn render(self: *Canvas, layout: *Layout) !void {
+        std.debug.print("Lifecycle::canvas.render\n", .{});
         try layout.write(&self.w.interface);
         try self.w.interface.flush();
     }
+};
+
+pub const Cursor = struct {
+    x: u16 = 0,
+    y: u16 = 0,
+    visible: bool = false,
 };

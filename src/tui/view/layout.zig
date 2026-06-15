@@ -3,7 +3,7 @@ const Header = @import("component/header.zig").Header;
 const Menu = @import("component/menu.zig").Menu;
 const Footer = @import("component/footer.zig").Footer;
 const View = @import("../view.zig").View;
-const Cursor = @import("component.zig").Cursor;
+const Cursor = @import("../canvas.zig").Cursor;
 const utils = @import("../utils.zig");
 
 pub const Layout = struct {
@@ -59,4 +59,11 @@ pub const Layout = struct {
         self.footer.y = rows;
         self.footer.width = cols;
     }
+};
+
+pub const Frame = struct {
+    x: u16 = 0,
+    y: u16 = 0,
+    w: u16 = 0,
+    h: u16 = 0,
 };
