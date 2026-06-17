@@ -20,7 +20,7 @@ pub const Canvas = struct {
     }
 
     pub fn render(self: *Canvas, layout: *Layout) !void {
-        std.debug.print("Lifecycle::canvas.render\n", .{});
+        std.log.scoped(.lifecycle).info("canvas.render", .{});
         try layout.write(&self.w.interface);
         try self.w.interface.flush();
     }

@@ -4,6 +4,7 @@ const App = @import("./tui/app.zig").App;
 const State = @import("./tui/state.zig").State;
 const Canvas = @import("./tui/canvas.zig").Canvas;
 const Transport = @import("./tui/transport.zig").Transport;
+const parseMouse = @import("./tui/input.zig").parseMouse;
 const utils = @import("./tui/utils.zig");
 
 const TermSize = struct { cols: u16, rows: u16 };
@@ -15,16 +16,17 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
     const original = try setup();
     defer std.posix.tcsetattr(stdin.handle, .FLUSH, original) catch {};
 
-    // Enter alternate screen and hide cursor
-    try stdout.writeStreamingAll(io, utils.enter_alt_screen ++ utils.clear_screen ++ utils.hide_cursor);
-    // try stdout.writeStreamingAll(io, utils.leave_alt_screen //
-    // ++ utils.show_cursor //
-    // ++ utils.enter_alt_screen //
-    // ++ utils.cursor_home //
-    // ++ utils.clear_screen //
-    // ++ utils.hide_cursor //
-    // );
-    defer stdout.writeStreamingAll(io, utils.show_cursor ++ utils.leave_alt_screen) catch {};
+    // Enter alternate screen, hide cursor, enable SGR mouse reporting
+    try stdout.writeStreamingAll(
+        io,
+        comptime utils.sm(.alt_screen) ++
+            utils.clear_screen ++
+            utils.rm(.cursor) ++
+            utils.mouse_on,
+    );
+    defer stdout.writeStreamingAll(io, comptime utils.mouse_off ++
+        utils.sm(.cursor) ++
+        utils.rm(.alt_screen)) catch {};
 
     // Terminal size
     var size = try getTermSize();
@@ -138,7 +140,37 @@ fn handleEvents(
                 var buf: [1]u8 = undefined;
                 const nr = stdin.readStreaming(io, &.{&buf}) catch continue;
                 if (nr == 0) continue;
-                if (!app.handleKey(buf[0])) return;
+
+                // Added support here for keys that are > 1 byte in length.
+                var key = buf[0];
+                if (key == 0x1b) {
+                    // Read the rest of the escape sequence (non-blocking via VMIN=0/VTIME=1)
+                    var seq: [32]u8 = undefined;
+                    const n2 = stdin.readStreaming(io, &.{&seq}) catch 0;
+                    const s = seq[0..n2];
+
+                    // Mouse reports arrive as: [<Cb;Cx;Cy(M|m). Log to inspect.
+                    if (s.len >= 2 and s[0] == '[' and s[1] == '<') {
+                        const mouse = parseMouse(s);
+                        std.log.scoped(.mouse).info("{any}", .{mouse});
+                        continue;
+                    }
+
+                    if (n2 == 2 and s[0] == '[') {
+                        const arrow: struct { key: u8, name: []const u8 } = switch (s[1]) {
+                            'A' => .{ .key = 'k', .name = "up" },
+                            'B' => .{ .key = 'j', .name = "down" },
+                            'C' => .{ .key = 'l', .name = "right" },
+                            'D' => .{ .key = 'h', .name = "left" },
+                            else => .{ .key = 0x1b, .name = "?" },
+                        };
+                        key = arrow.key;
+                        std.log.scoped(.lifecycle).info("pressed [{s} -> {c}]", .{ arrow.name, key });
+                    }
+                } else {
+                    std.log.scoped(.lifecycle).info("pressed [{c}]", .{key});
+                }
+                if (!app.handleKey(key)) return;
                 try canvas.render(&app.layout);
             }
         }

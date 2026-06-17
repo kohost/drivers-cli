@@ -13,6 +13,8 @@ pub const Style = struct {
     secondary_bg_color: []const u8 = "",
     padding_left: u8 = 0,
     padding_right: u8 = 0,
+    prefix: []const u8 = "",
+    suffix: []const u8 = "",
 };
 
 /// A pull-based value source: pairs a type-erased context (e.g. a model

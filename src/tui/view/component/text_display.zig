@@ -45,6 +45,9 @@ pub fn TextDisplay(comptime T: type) type {
             } else {
                 try format(T, self.source.*, w);
             }
+            if (self.style.suffix.len > 0) {
+                try w.writeAll(self.style.suffix);
+            }
             try w.writeAll(Color.reset);
         }
 

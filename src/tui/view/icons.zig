@@ -1,4 +1,6 @@
-// Nerd Font icons
+const std = @import("std");
+
+// Nerd Font
 pub const search = "\u{f002}";
 pub const lock = "\u{f023}";
 pub const camera = "\u{f030}";
@@ -14,3 +16,17 @@ pub const thermometer = "\u{f2c9}";
 pub const window = "\u{f2d2}";
 pub const send = "\u{f1d9}";
 pub const walking = "\u{f554}";
+
+pub const device_icon = std.StaticStringMap([]const u8).initComptime(.{
+    .{ "alarm", bell },
+    .{ "dimmer", lightbulb },
+    .{ "light", lightbulb },
+    .{ "switch", toggle },
+    .{ "lock", lock },
+    .{ "mediaSource", tv },
+    .{ "thermostat", thermometer },
+    .{ "motionSensor", walking },
+    .{ "camera", camera },
+    .{ "windowCovering", window },
+    .{ "courtesy", certificate },
+});

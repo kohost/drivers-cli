@@ -1,6 +1,6 @@
 const std = @import("std");
 const Color = @import("../../color.zig");
-const icons = @import("../../icons.zig");
+const icons = @import("../icons.zig");
 const utils = @import("../../utils.zig");
 const Component = @import("../Component.zig");
 const Writer = std.Io.Writer;

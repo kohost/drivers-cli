@@ -160,28 +160,6 @@ pub const App = struct {
                 // TODO: Silently swallowing errors with catch{} will want to surface.
                 .send_command => self.executeCommand() catch {},
                 .command_changed => |name| self.command = name,
-                .data_changed => {},
-                // .data_changed => |data| {
-                //     const a = self.pending_command_data_alloc.allocator();
-                //     // Collection (e.g. devices) holds an array of entities.
-                //     const coll = self.pending_command.getPtr("data").?.object.getOrPutValue(a, @tagName(data.collection), .{ .array = std.json.Array.init(a) }) catch continue;
-                //     const entities = &coll.value_ptr.array;
-                //
-                //     // Find the entity by id, else create one carrying its id.
-                //     const entity = for (entities.items) |*e| {
-                //         if (e.object.get("id")) |id| {
-                //             if (std.mem.eql(u8, id.string, data.id)) break e;
-                //         }
-                //     } else blk: {
-                //         var obj = std.json.Value{ .object = .empty };
-                //         obj.object.put(a, "id", .{ .string = a.dupe(u8, data.id) catch continue }) catch continue;
-                //         entities.append(obj) catch continue;
-                //         break :blk &entities.items[entities.items.len - 1];
-                //     };
-                //
-                //     // Merge the wire fragment into the entity (accumulates across edits).
-                //     mergeInto(a, &entity.object, data.data) catch continue;
-                // },
             }
         }
 

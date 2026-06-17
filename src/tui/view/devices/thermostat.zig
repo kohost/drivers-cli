@@ -37,11 +37,11 @@ pub const ThermostatView = struct {
         try self.createDisplayRow("firmware", &vsrc.firmware_version, .{});
         try self.createDisplayRow("watts", &vsrc.watts, .{});
         try self.createDisplayRow("online", &vsrc.offline, .{ .invert = true });
-        try self.createDisplayRow("scale", &vsrc.temperature_scale, .{});
-        try self.createDisplayRow("temp", &vsrc.current_temperature, .{});
-        try self.createTextInputRow("mode", &src.hvac_mode, &vsrc.hvac_mode);
+        try self.createTextInputRow("scale", &src.temperature_scale, &vsrc.temperature_scale, .{});
+        try self.createDisplayRow("temp", &vsrc.current_temperature, .{ .style = .{ .suffix = "°" } });
+        try self.createTextInputRow("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
         try self.createDisplayRow("state", &src.hvac_state, .{});
-        try self.createTextInputRow("fan", &src.fan_mode, &vsrc.fan_mode);
+        try self.createTextInputRow("fan", &src.fan_mode, &vsrc.fan_mode, .{});
         try self.createDisplayRow("fan state", &src.fan_state, .{});
 
         inline for (.{
@@ -57,9 +57,9 @@ pub const ThermostatView = struct {
 
         inline for (.{ "heat", "cool", "auto" }) |name| {
             if (@field(vsrc.setpoints, name) != null) {
-                try self.createTextInputRow(name, &@field(src.setpoints, name).?.value, &@field(vsrc.setpoints, name).?.value);
-                try self.createTextInputRow(name ++ " min", &@field(src.setpoints, name).?.min, &@field(vsrc.setpoints, name).?.min);
-                try self.createTextInputRow(name ++ " max", &@field(src.setpoints, name).?.max, &@field(vsrc.setpoints, name).?.max);
+                try self.createTextInputRow(name, &@field(src.setpoints, name).?.value, &@field(vsrc.setpoints, name).?.value, .{ .style = .{ .suffix = "°" } });
+                try self.createTextInputRow(name ++ " min", &@field(src.setpoints, name).?.min, &@field(vsrc.setpoints, name).?.min, .{ .style = .{ .suffix = "°" } });
+                try self.createTextInputRow(name ++ " max", &@field(src.setpoints, name).?.max, &@field(vsrc.setpoints, name).?.max, .{ .style = .{ .suffix = "°" } });
             }
         }
 
@@ -107,11 +107,12 @@ pub const ThermostatView = struct {
         lbl: []const u8,
         src: anytype,
         vsrc: anytype,
+        opts: TextInput(std.meta.Child(@TypeOf(src))).Options,
     ) !void {
         const T = std.meta.Child(@TypeOf(src));
         const a = self.arena.allocator();
         const i = try a.create(TextInput(T));
-        i.* = .init(src, vsrc);
+        i.* = .init(src, vsrc, opts);
         try self.list.addRow(lbl, i.component());
     }
 

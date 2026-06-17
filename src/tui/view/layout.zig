@@ -37,7 +37,7 @@ pub const Layout = struct {
 
     pub fn write(self: *Layout, writer: *std.Io.Writer) !void {
         var cursor = Cursor{};
-        try writer.writeAll(utils.clear_screen ++ utils.cursor_home ++ utils.hide_cursor);
+        try writer.writeAll(utils.clear_screen ++ utils.cursor_home ++ comptime utils.rm(.cursor));
         try self.header.write(writer);
         try self.menu.write(writer);
         try self.view.write(writer, &cursor);
@@ -45,7 +45,7 @@ pub const Layout = struct {
 
         if (cursor.visible) {
             try utils.moveTo(writer, cursor.x, cursor.y);
-            try writer.writeAll(utils.show_cursor);
+            try writer.writeAll(utils.sm(.cursor));
         }
     }
 

@@ -183,6 +183,16 @@ pub const Thermostat = struct {
                 changed = true;
             }
         }
+        if (json.get("temperatureScale")) |v| {
+            if (v == .string) {
+                if (std.meta.stringToEnum(TemperatureScale, v.string)) |scale| {
+                    if (self.temperature_scale != scale) {
+                        self.temperature_scale = scale;
+                        changed = true;
+                    }
+                }
+            }
+        }
 
         return changed;
     }
@@ -246,6 +256,7 @@ pub const Thermostat = struct {
         .{ "hvac_mode", "hvacMode" },
         .{ "fan_mode", "fanMode" },
         .{ "ui_enabled", "uiEnabled" },
+        .{ "temperature_scale", "temperatureScale" },
     };
     pub fn revert(self: *Thermostat, source: *const Thermostat) void {
         inline for (wire_fields) |f| @field(self, f[0]) = @field(source, f[0]);
@@ -267,6 +278,10 @@ pub const Thermostat = struct {
                 try out.put(a, "uiEnabled", .{ .bool = v });
                 changed = true;
             }
+        }
+        if (self.temperature_scale != source.temperature_scale) {
+            try out.put(a, "temperatureScale", .{ .string = @tagName(self.temperature_scale) });
+            changed = true;
         }
 
         // Setpoints

@@ -7,19 +7,25 @@ const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
+const Style = @import("../_component.zig").Style;
 
 pub fn TextInput(comptime T: type) type {
     return struct {
         const Self = @This();
         source: *const T,
         vsource: *T,
+        style: Style,
         buf: [128]u8 = undefined,
         buf_len: u8 = 0,
         cursor: u8 = 0,
         editing: bool = false,
 
-        pub fn init(source: *const T, vsource: *T) Self {
-            return .{ .source = source, .vsource = vsource };
+        pub const Options = struct {
+            style: Style = .{},
+        };
+
+        pub fn init(source: *const T, vsource: *T, opts: Options) Self {
+            return .{ .source = source, .vsource = vsource, .style = opts.style };
         }
 
         pub fn component(self: *Self) Component {
@@ -45,6 +51,9 @@ pub fn TextInput(comptime T: type) type {
 
             try w.writeAll(if (self.isDirty()) Color.yellow else Color.text);
             try format(self.vsource.*, w);
+            if (self.style.suffix.len > 0) {
+                try w.writeAll(self.style.suffix);
+            }
             try w.writeAll(Color.reset);
         }
 

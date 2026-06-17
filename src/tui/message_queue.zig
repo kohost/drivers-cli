@@ -1,12 +1,3 @@
-const std = @import("std");
-
-const Collection = enum {
-    devices,
-    credentials,
-    users,
-    groups,
-};
-
 pub const Message = union(enum) {
     quit,
     open_input: u8,
@@ -16,11 +7,6 @@ pub const Message = union(enum) {
     render,
     send_command,
     command_changed: []const u8,
-    data_changed: struct {
-        id: []const u8,
-        collection: Collection,
-        data: std.json.Value,
-    },
 };
 
 pub const MessageQueue = struct {

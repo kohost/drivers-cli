@@ -17,7 +17,7 @@ const Button = @import("component/button.zig").Button;
 const TextDisplay = @import("component/text_display.zig").TextDisplay;
 const Viewport = @import("component/viewport.zig").Viewport;
 const Style = @import("_component.zig").Style;
-const icons = @import("../icons.zig");
+const icons = @import("icons.zig");
 const commands = @import("../../commands.zig");
 const Writer = std.Io.Writer;
 
@@ -153,7 +153,7 @@ pub const DriverView = struct {
             self.table.clearRows();
             for (self.state.devices.items) |device| {
                 try self.table.addRow(&.{
-                    .{ .value = .{ .string = utils.device_icon.get(device.deviceType()) orelse device.deviceType() } },
+                    .{ .value = .{ .string = icons.device_icon.get(device.deviceType()) orelse device.deviceType() } },
                     .{ .value = .{ .string = device.id() } },
                     .{ .value = .{ .string = device.name() } },
                     .{ .value = .{ .string = if (device.modelNumber().len > 0) device.modelNumber() else "-" } },
