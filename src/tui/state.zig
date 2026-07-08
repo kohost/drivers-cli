@@ -116,7 +116,7 @@ pub const State = struct {
 
     pub fn diff(self: *State, source: *State, a: std.mem.Allocator) !std.json.Value {
         var devices = std.json.Array.init(a);
-        std.log.scoped(.lifecycle).info("state.diff [{d} devices]", .{self.devices.items.len});
+        std.log.scoped(.state).info("diff [{d} devices]", .{self.devices.items.len});
 
         for (self.devices.items) |*device| {
             const source_device = source.getDevice(device.id()) orelse continue;

@@ -5,6 +5,7 @@ const Color = @import("../../color.zig");
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Style = @import("../_component.zig").Style;
 const utils = @import("../../utils.zig");
@@ -44,10 +45,15 @@ pub const Toggle = struct {
         return .{ .ptr = self, .vtable = &.{
             .write = write,
             .handleKey = handleKey,
+            .handleMouse = handleMouse,
         } };
     }
 
-    fn write(ptr: *anyopaque, w: *Writer, _: *Cursor, f: Frame) anyerror!void {
+    pub fn handleMouse(_: *anyopaque, _: Mouse, _: *MessageQueue) KeyResult {
+        return .ignored;
+    }
+
+    fn write(ptr: *anyopaque, w: *Writer, _: *Cursor, f: Frame, _: bool) anyerror!void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         try utils.moveTo(w, f.x, f.y);
 

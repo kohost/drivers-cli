@@ -10,6 +10,7 @@ const Component = @import("Component.zig");
 const Cursor = @import("../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../input.zig").KeyResult;
+const Mouse = @import("../input.zig").Mouse;
 const MessageQueue = @import("../message_queue.zig").MessageQueue;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const Select = @import("component/select.zig").Select;
@@ -52,6 +53,9 @@ pub const DriverView = struct {
     req_display: Viewport,
     res_text: []const u8,
     res_display: Viewport,
+    // Backing store for the depth-1 breadcrumb title. Must outlive write() so
+    // handleMouse can read top_left; a write()-local buffer would dangle.
+    title_buf: [128]u8 = undefined,
 
     pub const Config = struct {
         alloc: std.mem.Allocator,
@@ -181,11 +185,10 @@ pub const DriverView = struct {
             self.panels[0].setChildren(&.{self.thermostat_view.component()});
 
             // Panel label: manufacturer/device-id
-            var title_buf: [128]u8 = undefined;
             if (self.device_idx) |idx| {
                 if (idx < self.state.devices.items.len) {
                     const dev = self.state.devices.items[idx];
-                    const title = std.fmt.bufPrint(&title_buf, "{s} " ++ icons.angle_right ++ " {s}", .{ manufacturer, dev.id() }) catch manufacturer;
+                    const title = std.fmt.bufPrint(&self.title_buf, "{s} " ++ icons.angle_right ++ " {s}", .{ manufacturer, dev.id() }) catch manufacturer;
                     self.panels[0].top_left = title;
                 }
             }
@@ -212,38 +215,45 @@ pub const DriverView = struct {
         const right_x = f.x + left_w;
         const right_half = bottom_h / 2;
 
-        try self.panels[0].component().write(writer, cursor, .{ .x = f.x, .y = f.y, .w = f.w, .h = half });
+        try self.panels[0].component().write(writer, cursor, .{ .x = f.x, .y = f.y, .w = f.w, .h = half }, self.focused == .main);
         // Panel 1: left 20%, bottom
-        try self.panels[1].component().write(writer, cursor, .{ .x = f.x, .y = bottom_y, .w = left_w, .h = bottom_h });
+        try self.panels[1].component().write(writer, cursor, .{ .x = f.x, .y = bottom_y, .w = left_w, .h = bottom_h }, self.focused == .commands);
         // Panel 2: right 80%, top-right
-        try self.panels[2].component().write(writer, cursor, .{ .x = right_x, .y = bottom_y, .w = right_w, .h = right_half });
+        try self.panels[2].component().write(writer, cursor, .{ .x = right_x, .y = bottom_y, .w = right_w, .h = right_half }, self.focused == .request);
         // Panel 3: right 80%, bottom-right
-        try self.panels[3].component().write(writer, cursor, .{ .x = right_x, .y = bottom_y + right_half, .w = right_w, .h = bottom_h - right_half });
+        try self.panels[3].component().write(writer, cursor, .{ .x = right_x, .y = bottom_y + right_half, .w = right_w, .h = bottom_h - right_half }, self.focused == .response);
         // Command row - draw bg_mantle across, then select/button draw on top
         try utils.moveTo(writer, f.x + 1, select_y);
         try writer.writeAll(Color.bg_mantle);
         for (0..f.w -| 2) |_| try writer.writeAll(" ");
         try writer.writeAll(Color.reset);
         // Command row components
-        try self.command_select.component().write(writer, cursor, .{ .x = f.x + 1, .y = select_y, .w = f.w, .h = 1 });
+        const url_x = f.x + 22;
+        const btn_x = f.x + f.w - 9;
 
-        // Url
-        // try self.url.component().write(writer, )
-        try self.url.component().write(writer, cursor, .{
-            .x = f.x + 22, //
+        // Command select — stop where the url begins
+        try self.command_select.component().write(writer, cursor, .{
+            .x = f.x + 1,
             .y = select_y,
-            .w = f.w,
-            .h = f.h,
-        });
+            .w = url_x - (f.x + 1),
+            .h = 1,
+        }, self.focused == .command_select);
+
+        // Url — span from its start up to the button
+        try self.url.component().write(writer, cursor, .{
+            .x = url_x,
+            .y = select_y,
+            .w = btn_x -| url_x,
+            .h = 1,
+        }, false);
 
         // Send button, right-justified
-        const btn_x = f.x + f.w - 9;
         try self.send_button.component().write(writer, cursor, .{
             .x = btn_x,
             .y = select_y,
             .w = 10,
             .h = 1,
-        });
+        }, self.focused == .send_button);
     }
 
     // Children: 0=main(table or kv_list), 1=details
@@ -254,38 +264,7 @@ pub const DriverView = struct {
             else
                 self.thermostat_view.component().handleKey(key, mq);
             switch (result) {
-                .dive_in => {
-                    if (self.depth == 0) {
-                        if (self.table.selectedRow()) |row| {
-                            if (row.len < 2) return .consumed;
-                            const id = switch (row[1].value) {
-                                .string => |s| s,
-                                else => return .consumed,
-                            };
-                            for (self.state.devices.items, 0..) |*device, idx| {
-                                if (std.mem.eql(u8, device.id(), id)) {
-                                    self.list_selected = self.table.selected;
-                                    self.device_idx = idx;
-                                    const sdevice = &self.state.devices.items[idx];
-                                    const vdevice = &self.vstate.devices.items[idx];
-                                    switch (vdevice.*) {
-                                        .thermostat => |*vd| {
-                                            switch (sdevice.*) {
-                                                .thermostat => |*sd| {
-                                                    self.thermostat_view = ThermostatView.init(self.alloc, vd, sd) catch return .consumed;
-                                                },
-                                            }
-                                        },
-                                    }
-                                    self.depth = 1;
-                                    mq.post(.render);
-                                    return .consumed;
-                                }
-                            }
-                        }
-                    }
-                    return .consumed;
-                },
+                .dive_in => return self.diveIn(mq),
                 .ignored => {
                     if (self.depth == 1 and (key == 'h' or key == 0x1b)) {
                         self.thermostat_view.deinit();
@@ -373,7 +352,7 @@ pub const DriverView = struct {
             if (target) |t| {
                 if (t == .main and self.depth == 1) {
                     const len = self.thermostat_view.list.rows.items.len;
-                    if (len > 0) self.thermostat_view.list.focused = len - 1;
+                    if (len > 0) self.thermostat_view.list.cursor = len - 1;
                 }
                 self.setFocus(t);
                 mq.post(.render);
@@ -390,6 +369,115 @@ pub const DriverView = struct {
         return .ignored;
     }
 
+    pub fn handleMouse(self: *DriverView, m: Mouse, mq: *MessageQueue) KeyResult {
+        // Find component
+        const target: ?Component = blk: {
+            if (self.command_select.frame.contains(m.x, m.y)) {
+                self.setFocus(.command_select);
+                break :blk self.command_select.component();
+            } else if (self.command_select.open) {
+                self.command_select.selected = self.command_select.previous;
+                self.command_select.open = false;
+            }
+            if (self.url.frame.contains(m.x, m.y))
+                break :blk self.url.component();
+            if (self.send_button.frame.contains(m.x, m.y))
+                break :blk self.send_button.component();
+            for (&self.panels, 0..) |*p, i| {
+                if (p.frame.contains(m.x, m.y)) {
+                    self.setFocus(switch (i) {
+                        0 => .main,
+                        1 => .commands,
+                        2 => .request,
+                        3 => .response,
+                        else => unreachable,
+                    });
+                    break :blk p.component();
+                }
+            }
+            break :blk null;
+        };
+
+        const result = if (target) |t| t.handleMouse(m, mq) else .ignored;
+
+        // New command
+        if (self.focused == .command_select and result == .changed) {
+            mq.post(.{ .command_changed = self.command_select.options[self.command_select.selected] });
+        }
+
+        // Dive in
+        if (result == .dive_in) return self.diveIn(mq);
+
+        // Dive out
+        if (result == .dive_out) return self.diveOut();
+
+        return result;
+
+        // Scrolling
+        // if (m.btn == .wheel_down or m.btn == .wheel_up) {
+        //     const delta: i16 = if (m.btn == .wheel_up) -1 else 1;
+        //     var scrolled = false;
+        //     if (self.depth == 0 and self.panels[0].frame.contains(m.x, m.y))
+        //         scrolled = self.table.scrollBy(delta)
+        //     else if (self.panels[2].frame.contains(m.x, m.y))
+        //         scrolled = self.req_display.scrollBy(delta)
+        //     else if (self.panels[3].frame.contains(m.x, m.y))
+        //         scrolled = self.res_display.scrollBy(delta);
+        //     if (scrolled) mq.post(.render);
+        //     return if (scrolled) .consumed else .ignored;
+        // }
+        // if (!m.press or m.btn != .left) return .ignored;
+
+        // Open dropdown: options are an overlay below the header frame.
+        // if (self.command_select.open) {
+        //     const f = self.command_select.frame;
+        //     const first = f.y + 1;
+        //     const last = first + @as(u16, @intCast(self.command_select.options.len));
+        //     if (m.x >= f.x and m.x < f.x + f.w and m.y >= first and m.y < last) {
+        //         self.command_select.selected = m.y - first;
+        //         const committed = self.command_select.selected != self.command_select.previous;
+        //         _ = self.command_select.component().handleKey('\r', mq); // confirm and close
+        //         if (committed)
+        //             mq.post(.{ .command_changed = self.command_select.options[self.command_select.selected] });
+        //         mq.post(.render);
+        //         return .consumed;
+        //     }
+        // }
+
+        // Find the clicked component
+        // const target: ?Focus = blk: {
+        //     if (self.send_button.frame.contains(m.x, m.y)) break :blk .send_button;
+        //     if (self.command_select.frame.contains(m.x, m.y)) break :blk .command_select;
+        //     if (self.panels[0].frame.contains(m.x, m.y)) break :blk .main;
+        //     if (self.panels[1].frame.contains(m.x, m.y)) break :blk .commands;
+        //     if (self.panels[2].frame.contains(m.x, m.y)) break :blk .request;
+        //     if (self.panels[3].frame.contains(m.x, m.y)) break :blk .response;
+        //     break :blk null;
+        // };
+
+        // Return if no component found
+        // const t = target orelse return .ignored;
+
+        // Set focus on clicked component
+        // self.setFocus(t);
+
+        // switch (t) {
+        //     .main => if (self.depth == 0)
+        //         self.table.selectAt(m.y)
+        //     else
+        //         self.thermostat_view.list.cursorAt(m.y),
+        //     // .send_button => mq.post(.send_command),
+        //     .send_button => {
+        //         self.send_button.component();
+        //     },
+        //     .command_select => _ = self.command_select.component().handleKey('\r', mq),
+        //     else => {},
+        // }
+
+        // mq.post(.render);
+        // return .consumed;
+    }
+
     pub fn focus(self: *DriverView) void {
         self.setFocus(.main);
         if (self.table.selected == null) self.table.selected = 0;
@@ -401,21 +489,13 @@ pub const DriverView = struct {
 
     fn setFocus(self: *DriverView, f: ?Focus) void {
         self.focused = f;
-        // Update panel focus
-        for (&self.panels, 0..) |*panel, i| {
-            panel.focused = (f != null and @intFromEnum(f.?) == i);
-        }
-        // Update child focus
-        self.table.focused = (f == .main and self.depth == 0);
-        self.command_select.focused = (f == .command_select);
-        self.send_button.focused = (f == .send_button);
-        self.req_display.focused = (f == .request);
-        self.res_display.focused = (f == .response);
+        // Focus cascades down at render time via write(); here we only seed
+        // the thermostat list cursor when diving into the main panel.
         if (self.depth == 1) {
             if (f == .main) {
-                if (self.thermostat_view.list.focused == null) self.thermostat_view.list.focused = 0;
+                if (self.thermostat_view.list.cursor == null) self.thermostat_view.list.cursor = 0;
             } else {
-                self.thermostat_view.list.focused = null;
+                self.thermostat_view.list.cursor = null;
             }
         }
     }
@@ -438,5 +518,43 @@ pub const DriverView = struct {
 
     pub fn getFilter(self: *const DriverView) []const u8 {
         return self.table.getFilter();
+    }
+
+    fn diveIn(self: *DriverView, mq: *MessageQueue) KeyResult {
+        if (self.depth != 0) return .consumed;
+        const row = self.table.selectedRow() orelse return .consumed;
+        if (row.len < 2) return .consumed;
+        const id = switch (row[1].value) {
+            .string => |s| s,
+            else => return .consumed,
+        };
+
+        for (self.state.devices.items, 0..) |*device, i| {
+            if (!std.mem.eql(u8, device.id(), id)) continue;
+            self.list_selected = self.table.selected;
+            self.device_idx = i;
+            const sdevice = &self.state.devices.items[i];
+            const vdevice = &self.vstate.devices.items[i];
+            switch (vdevice.*) {
+                .thermostat => |*vd| switch (sdevice.*) {
+                    .thermostat => |*sd| {
+                        self.thermostat_view = ThermostatView.init(self.alloc, vd, sd) catch return .consumed;
+                    },
+                },
+            }
+        }
+        self.depth = 1;
+        mq.post(.render);
+        return .consumed;
+    }
+
+    fn diveOut(self: *DriverView) KeyResult {
+        if (self.depth != 1) return .ignored;
+        self.thermostat_view.deinit();
+        self.depth = 0;
+        self.table.selected = self.list_selected;
+        self.device_idx = null;
+        self.setFocus(.main);
+        return .consumed;
     }
 };

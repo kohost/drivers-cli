@@ -5,6 +5,7 @@ const Component = @import("../Component.zig");
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Writer = std.Io.Writer;
 
@@ -51,13 +52,13 @@ pub const Table = struct {
     headers: []const Cell,
     rows: std.ArrayList(Row),
     selected: ?usize,
-    focused: bool,
     scroll_offset: u16,
     visible_rows: u16,
     prev_key: u8,
     filter_buf: [64]u8,
     filter_len: usize,
     filtered_count: u16,
+    frame: Frame = .{},
 
     pub fn init(alloc: std.mem.Allocator, headers: []const Cell) Table {
         return .{
@@ -65,7 +66,6 @@ pub const Table = struct {
             .headers = headers,
             .rows = .empty,
             .selected = null,
-            .focused = false,
             .scroll_offset = 0,
             .visible_rows = 0,
             .prev_key = 0,
@@ -99,7 +99,39 @@ pub const Table = struct {
         return .{ .ptr = self, .vtable = &.{
             .write = write,
             .handleKey = handleKey,
+            .handleMouse = handleMouse,
         } };
+    }
+
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+
+        // Scroll
+        if (m.btn == .wheel_up or m.btn == .wheel_down) {
+            const delta: i16 = if (m.btn == .wheel_up) -1 else 1;
+            if (self.scrollBy(delta)) {
+                return .consumed;
+            }
+        }
+
+        // Hover
+        if (m.move and m.press) {
+            if (self.rowAt(m.y)) |i| {
+                self.selected = i;
+                mq.post(.{ .update_pointer = utils.pointer_hand });
+            } else {
+                mq.post(.{ .update_pointer = utils.pointer_default });
+            }
+            return .consumed;
+        }
+
+        // Press
+        if (m.press) {
+            self.selectAt(m.y);
+            return .dive_in;
+        }
+
+        return .ignored;
     }
 
     pub fn handleKeyDirect(self: *Table, key: u8, mq: *MessageQueue) KeyResult {
@@ -191,8 +223,27 @@ pub const Table = struct {
         return self.filter_buf[0..self.filter_len];
     }
 
-    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame) anyerror!void {
+    pub fn rowAt(self: *Table, y: u16) ?usize {
+        if (y <= self.frame.y) return null;
+        const idx = self.scroll_offset + (y - self.frame.y - 1);
+        return if (idx < self.filtered_count) idx else null;
+    }
+
+    pub fn selectAt(self: *Table, y: u16) void {
+        if (self.rowAt(y)) |i| self.selected = i;
+    }
+
+    pub fn scrollBy(self: *Table, delta: i16) bool {
+        const max: i32 = self.filtered_count -| self.visible_rows;
+        const next = std.math.clamp(@as(i32, self.scroll_offset) + delta, 0, max);
+        if (next == self.scroll_offset) return false;
+        self.scroll_offset = @intCast(next);
+        return true;
+    }
+
+    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame, focused: bool) anyerror!void {
         const self: *Self = @ptrCast(@alignCast(ptr));
+        self.frame = frame;
         const x = frame.x;
         const y = frame.y;
         const h = frame.h;
@@ -259,7 +310,7 @@ pub const Table = struct {
             if (row_y >= y + h) break;
             const row = items[src_idx];
             try utils.moveTo(writer, x, row_y);
-            const is_selected = self.focused and self.selected != null and drawn == self.selected.?;
+            const is_selected = focused and self.selected != null and drawn == self.selected.?;
             if (is_selected) {
                 try utils.moveTo(writer, x -| 2, row_y);
                 try writer.writeAll(Color.lavender ++ "┃" ++ Color.reset);
@@ -285,7 +336,6 @@ pub const Table = struct {
             drawn += 1;
         }
     }
-
 
     pub fn selectedRow(self: *const Table) ?[]const Cell {
         const sel = self.selected orelse return null;

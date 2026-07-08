@@ -4,7 +4,9 @@ const App = @import("./tui/app.zig").App;
 const State = @import("./tui/state.zig").State;
 const Canvas = @import("./tui/canvas.zig").Canvas;
 const Transport = @import("./tui/transport.zig").Transport;
-const parseMouse = @import("./tui/input.zig").parseMouse;
+const Mouse = @import("./tui/input.zig").Mouse;
+const parseEscape = @import("./tui/input.zig").parseEscape;
+const parseInput = @import("./tui/input.zig").parseInput;
 const utils = @import("./tui/utils.zig");
 
 const TermSize = struct { cols: u16, rows: u16 };
@@ -112,10 +114,13 @@ fn handleEvents(
     // Buffer for the kernel to write fired events into
     var events: [2]std.c.Kevent = undefined;
 
+    // Persists across reads so escape sequences split across reads survive.
+    var pending: [256]u8 = undefined;
+    var pending_len: usize = 0;
+
     while (true) {
         // Block until at least one event fires. Returns how many fired.
         // const n = std.posix.kevent(kq, &changes, &events, null) catch continue;
-
         const n = std.c.kevent(
             kq,
             &changes,
@@ -124,6 +129,7 @@ fn handleEvents(
             @intCast(events.len),
             null,
         );
+        // Continue on err
         if (n < 0) continue;
 
         // Walk events
@@ -135,42 +141,44 @@ fn handleEvents(
                 try canvas.render(&app.layout);
             }
 
-            // Keypress available - read single byte
+            // Input available - drain it into the persistent buffer, then parse
+            // complete tokens off the front. Sequences split across reads survive.
             if (ev.filter == std.c.EVFILT.READ) {
-                var buf: [1]u8 = undefined;
-                const nr = stdin.readStreaming(io, &.{&buf}) catch continue;
+                var chunk: [256]u8 = undefined;
+                const nr = stdin.readStreaming(io, &.{&chunk}) catch continue;
+                // The event fired but the stream is finished, there's nothing
+                // to read!
                 if (nr == 0) continue;
+                if (pending_len + nr > pending.len) pending_len = 0; // overflow: drop stale tail
+                @memcpy(pending[pending_len..][0..nr], chunk[0..nr]);
+                pending_len += nr;
 
-                // Added support here for keys that are > 1 byte in length.
-                var key = buf[0];
-                if (key == 0x1b) {
-                    // Read the rest of the escape sequence (non-blocking via VMIN=0/VTIME=1)
-                    var seq: [32]u8 = undefined;
-                    const n2 = stdin.readStreaming(io, &.{&seq}) catch 0;
-                    const s = seq[0..n2];
+                var i: usize = 0;
+                while (i < pending_len) {
+                    const token = parseInput(pending[i..pending_len]) orelse break;
+                    std.log.scoped(.input).info("{f}", .{token});
 
-                    // Mouse reports arrive as: [<Cb;Cx;Cy(M|m). Log to inspect.
-                    if (s.len >= 2 and s[0] == '[' and s[1] == '<') {
-                        const mouse = parseMouse(s);
-                        std.log.scoped(.mouse).info("{any}", .{mouse});
-                        continue;
+                    switch (token.action) {
+                        .mouse => |m| if (!app.handleMouse(m)) return,
+                        .key => |k| if (!app.handleKey(k)) return,
+                        .none => {},
                     }
-
-                    if (n2 == 2 and s[0] == '[') {
-                        const arrow: struct { key: u8, name: []const u8 } = switch (s[1]) {
-                            'A' => .{ .key = 'k', .name = "up" },
-                            'B' => .{ .key = 'j', .name = "down" },
-                            'C' => .{ .key = 'l', .name = "right" },
-                            'D' => .{ .key = 'h', .name = "left" },
-                            else => .{ .key = 0x1b, .name = "?" },
-                        };
-                        key = arrow.key;
-                        std.log.scoped(.lifecycle).info("pressed [{s} -> {c}]", .{ arrow.name, key });
-                    }
-                } else {
-                    std.log.scoped(.lifecycle).info("pressed [{c}]", .{key});
+                    i += token.len;
                 }
-                if (!app.handleKey(key)) return;
+
+                // Shift any unparsed remainder to the front for next time.
+                if (i > 0) {
+                    std.mem.copyForwards(u8, pending[0..], pending[i..pending_len]);
+                    pending_len -= i;
+                }
+
+                // Lone trailing ESC — no sequence followed in this read, so it's
+                // the Esc key. parseInput holds a bare 0x1b as "incomplete"; flush it.
+                if (pending_len == 1 and pending[0] == 0x1b) {
+                    if (!app.handleKey(0x1b)) return;
+                    pending_len = 0;
+                }
+
                 try canvas.render(&app.layout);
             }
         }

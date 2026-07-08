@@ -6,8 +6,11 @@ const View = @import("view.zig").View;
 const DriverView = @import("view/driver.zig").DriverView;
 const MessageQueue = @import("./message_queue.zig").MessageQueue;
 const KeyResult = @import("input.zig").KeyResult;
+const Mouse = @import("input.zig").Mouse;
 const Allocator = std.mem.Allocator;
 const Transport = @import("transport.zig").Transport;
+
+const view_top: u16 = 5; // first row of the view region (below header/menu)
 
 pub const App = struct {
     alloc: Allocator,
@@ -38,7 +41,7 @@ pub const App = struct {
         io: std.Io,
     ) !App {
         const x = 1;
-        const y = 5;
+        const y = view_top;
         const width = cols;
         const height = rows - 6;
         const vstate = try alloc.create(State);
@@ -76,7 +79,7 @@ pub const App = struct {
 
     pub fn resize(self: *App, cols: u16, rows: u16) !void {
         const x = 1;
-        const y = 5;
+        const y = view_top;
         const height = rows - 6;
 
         self.cols = cols;
@@ -130,6 +133,29 @@ pub const App = struct {
             else => {},
         }
 
+        return self.drain();
+    }
+
+    pub fn handleMouse(self: *App, m: Mouse) bool {
+        // Outer focus: a click picks which top-level region owns the keyboard.
+        // The driver sets its own inner focus during dispatch below.
+        if (m.press and !m.move) {
+            self.focused = self.regionAt(m);
+            self.layout.menu.focused = (self.focused == 0);
+            if (self.focused != 1) self.view.blur();
+        }
+        _ = self.view.handleMouse(m, &self.mq);
+        return self.drain();
+    }
+
+    // Which top-level region a click lands in: 0=menu, 1=view, 2=footer
+    fn regionAt(self: *App, m: Mouse) usize {
+        if (m.y >= self.layout.footer.y) return 2;
+        if (m.y >= view_top) return 1;
+        return 0;
+    }
+
+    fn drain(self: *App) bool {
         for (self.mq.drain()) |msg| {
             switch (msg) {
                 .quit => return false,
@@ -160,6 +186,7 @@ pub const App = struct {
                 // TODO: Silently swallowing errors with catch{} will want to surface.
                 .send_command => self.executeCommand() catch {},
                 .command_changed => |name| self.command = name,
+                .update_pointer => |seq| self.layout.pointer = seq,
             }
         }
 

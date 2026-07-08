@@ -5,6 +5,7 @@ const Color = @import("../../color.zig");
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Style = @import("../_component.zig").Style;
 const utils = @import("../../utils.zig");
@@ -15,6 +16,7 @@ pub fn TextDisplay(comptime T: type) type {
 
         source: *const T,
         style: Style,
+        frame: Frame = .{},
         invert: bool = false,
 
         pub const Options = struct {
@@ -30,11 +32,19 @@ pub fn TextDisplay(comptime T: type) type {
             return .{ .ptr = self, .vtable = &.{
                 .write = write,
                 .handleKey = handleKey,
+                .handleMouse = handleMouse,
             } };
         }
 
-        fn write(ptr: *anyopaque, w: *Writer, _: *Cursor, f: Frame) anyerror!void {
+        pub fn handleMouse(_: *anyopaque, _: Mouse, mq: *MessageQueue) KeyResult {
+            mq.post(.{ .update_pointer = utils.pointer_default });
+
+            return .ignored;
+        }
+
+        fn write(ptr: *anyopaque, w: *Writer, _: *Cursor, f: Frame, _: bool) anyerror!void {
             const self: *Self = @ptrCast(@alignCast(ptr));
+            self.frame = f;
             try utils.moveTo(w, f.x, f.y);
 
             try w.writeAll(self.style.bg_color);

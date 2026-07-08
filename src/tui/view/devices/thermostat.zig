@@ -7,6 +7,7 @@ const Writer = std.Io.Writer;
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Thermostat = @import("../../state/models/thermostat.zig").Thermostat;
 const TextDisplay = @import("../component/text_display.zig").TextDisplay;
@@ -63,7 +64,7 @@ pub const ThermostatView = struct {
             }
         }
 
-        self.list.focused = 0;
+        self.list.cursor = 0;
         return self;
     }
 
@@ -75,12 +76,18 @@ pub const ThermostatView = struct {
         return .{ .ptr = self, .vtable = &.{
             .write = write,
             .handleKey = handleKey,
+            .handleMouse = handleMouse,
         } };
     }
 
-    fn write(ptr: *anyopaque, w: *Writer, c: *Cursor, f: Frame) anyerror!void {
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
         const self: *Self = @ptrCast(@alignCast(ptr));
-        try self.list.component().write(w, c, f);
+        return self.list.component().handleMouse(m, mq);
+    }
+
+    fn write(ptr: *anyopaque, w: *Writer, c: *Cursor, f: Frame, focused: bool) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        try self.list.component().write(w, c, f, focused);
     }
 
     fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {

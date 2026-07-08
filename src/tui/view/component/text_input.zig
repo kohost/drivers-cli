@@ -6,6 +6,7 @@ const Writer = std.Io.Writer;
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Style = @import("../_component.zig").Style;
 
@@ -32,10 +33,11 @@ pub fn TextInput(comptime T: type) type {
             return .{ .ptr = self, .vtable = &.{
                 .write = write,
                 .handleKey = handleKey,
+                .handleMouse = handleMouse,
             } };
         }
 
-        fn write(ptr: *anyopaque, w: *Writer, c: *Cursor, f: Frame) anyerror!void {
+        fn write(ptr: *anyopaque, w: *Writer, c: *Cursor, f: Frame, _: bool) anyerror!void {
             const self: *Self = @ptrCast(@alignCast(ptr));
             try utils.moveTo(w, f.x, f.y);
 
@@ -68,7 +70,7 @@ pub fn TextInput(comptime T: type) type {
                         self.buf_len = @intCast(fw.end);
                         self.cursor = self.buf_len;
                         self.editing = true;
-                        mq.post(.render);
+                        // mq.post(.render);
                         return .consumed;
                     },
                     else => return .ignored,
@@ -107,6 +109,25 @@ pub fn TextInput(comptime T: type) type {
                     return .consumed;
                 },
             }
+        }
+
+        pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+            const self: *Self = @ptrCast(@alignCast(ptr));
+
+            mq.post(.{ .update_pointer = utils.pointer_hand });
+
+            if (!m.move and m.press) {
+                if (!self.editing) {
+                    var fw = Writer.fixed(&self.buf);
+                    format(self.vsource.*, &fw) catch {};
+                    self.buf_len = @intCast(fw.end);
+                    self.cursor = self.buf_len;
+                    self.editing = true;
+                    return .consumed;
+                }
+            }
+
+            return .ignored;
         }
 
         fn format(v: T, w: *Writer) !void {

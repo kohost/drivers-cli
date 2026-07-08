@@ -7,6 +7,7 @@ const Writer = std.Io.Writer;
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const Style = @import("../_component.zig").Style;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
@@ -19,8 +20,8 @@ pub const Select = struct {
     previous: usize,
     open: bool,
     dirty: bool,
-    focused: bool,
     style: Style,
+    frame: Frame = .{},
 
     pub fn init(source: []const u8, options: []const []const u8, style: Style) Select {
         // Find which option is selected
@@ -38,7 +39,6 @@ pub const Select = struct {
             .previous = selected,
             .open = false,
             .dirty = false,
-            .focused = false,
             .style = style,
         };
     }
@@ -47,11 +47,14 @@ pub const Select = struct {
         return .{ .ptr = self, .vtable = &.{
             .write = write,
             .handleKey = handleKey,
+            .handleMouse = handleMouse,
         } };
     }
 
-    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame) anyerror!void {
+    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame, focused: bool) anyerror!void {
         const self: *Self = @ptrCast(@alignCast(ptr));
+        self.frame = frame;
+        if (self.open) self.frame.h = @intCast(1 + self.options.len);
         const x = frame.x;
         const y = frame.y;
 
@@ -83,9 +86,8 @@ pub const Select = struct {
 
         // Start drawing
         try utils.moveTo(writer, x, y);
-        // if (self.style.bg_color.len > 0) try writer.writeAll(self.style.bg_color);
         try writer.writeAll(bg_color);
-        if (self.focused and !self.open) {
+        if (focused and !self.open) {
             try writer.writeAll(color);
             try writer.writeAll("▎");
             for (0..self.style.padding_left -| 1) |_| try writer.writeAll(" ");
@@ -175,6 +177,34 @@ pub const Select = struct {
             },
             else => return .ignored,
         }
+        return .ignored;
+    }
+
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        mq.post(.{ .update_pointer = utils.pointer_hand });
+
+        // Focus follows mouse while open
+        if (self.open and m.move) {
+            if (m.y > self.frame.y) {
+                const row = m.y - self.frame.y - 1;
+                if (row < self.options.len) self.selected = row;
+            }
+            return .consumed;
+        }
+
+        if (m.press and !m.move) {
+            if (self.open) {
+                self.open = false;
+                self.dirty = true;
+                return .changed;
+            } else {
+                self.previous = self.selected;
+                self.open = true;
+            }
+            return .consumed;
+        }
+
         return .ignored;
     }
 };

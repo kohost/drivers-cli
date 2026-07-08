@@ -11,6 +11,7 @@ pub const Layout = struct {
     menu: Menu,
     footer: Footer,
     view: *View,
+    pointer: []const u8 = utils.pointer_default,
 
     pub fn init(cols: u16, rows: u16, view: *View) Layout {
         return .{

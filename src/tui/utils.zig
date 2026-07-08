@@ -7,8 +7,10 @@ const std = @import("std");
 pub const clear_screen = "\x1b[2J";
 pub const cursor_home = "\x1b[H";
 pub const clear_line = "\x1b[K";
-pub const mouse_on = sm(.mouse_click) ++ sm(.mouse_sgr);
-pub const mouse_off = rm(.mouse_sgr) ++ rm(.mouse_click);
+pub const mouse_on = sm(.mouse_all) ++ sm(.mouse_sgr);
+pub const mouse_off = rm(.mouse_sgr) ++ rm(.mouse_all);
+pub const pointer_hand = "\x1b]22;pointer\x1b\\";
+pub const pointer_default = "\x1b]22;default\x1b\\";
 
 // Digital Equipment Corporation - the company that made the VT100/VT220 terminals
 // in the late 1970s-80s. Those terminals defined the esc sequences that every
@@ -18,6 +20,7 @@ pub const DecPrivateMode = enum(u16) {
     cursor = 25,
     mouse_click = 1000,
     mouse_drag = 1002,
+    mouse_all = 1003,
     mouse_sgr = 1006,
 };
 pub fn sm(comptime m: DecPrivateMode) []const u8 {

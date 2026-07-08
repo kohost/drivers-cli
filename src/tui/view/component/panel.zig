@@ -2,8 +2,10 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
 const Component = @import("../Component.zig");
+const icons = @import("../icons.zig");
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const Cursor = @import("../../canvas.zig").Cursor;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Writer = std.Io.Writer;
@@ -16,23 +18,21 @@ pub const Panel = struct {
     top_right: []const u8,
     bottom_left: []const u8,
     bottom_right: []const u8,
-    focused: bool,
     children: [4]Component,
     child_count: u8,
+    frame: Frame = .{},
 
     pub fn init(opts: struct {
         top_left: []const u8 = "",
         top_right: []const u8 = "",
         bottom_left: []const u8 = "",
         bottom_right: []const u8 = "",
-        focused: bool = false,
     }) Panel {
         return .{
             .top_left = opts.top_left,
             .top_right = opts.top_right,
             .bottom_left = opts.bottom_left,
             .bottom_right = opts.bottom_right,
-            .focused = opts.focused,
             .children = undefined,
             .child_count = 0,
         };
@@ -42,7 +42,26 @@ pub const Panel = struct {
         return .{ .ptr = self, .vtable = &.{
             .write = write,
             .handleKey = handleKey,
+            .handleMouse = handleMouse,
         } };
+    }
+
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+
+        // Only a nested panel's title (one with a breadcrumb) is clickable to dive out.
+        const has_breadcrumb = std.mem.indexOf(u8, self.top_left, icons.angle_right) != null;
+        if (has_breadcrumb and m.y == self.frame.y) {
+            mq.post(.{ .update_pointer = utils.pointer_hand });
+            if (m.press and !m.move) return .dive_out;
+            return .consumed;
+        }
+
+        if (self.child_count > 0) {
+            return self.children[0].handleMouse(m, mq);
+        }
+
+        return .ignored;
     }
 
     pub fn setChildren(self: *Panel, new_children: []const Component) void {
@@ -61,15 +80,16 @@ pub const Panel = struct {
         return .ignored;
     }
 
-    fn write(ptr: *anyopaque, writer: *Writer, cursor: *Cursor, frame: Frame) anyerror!void {
+    fn write(ptr: *anyopaque, writer: *Writer, cursor: *Cursor, frame: Frame, focused: bool) anyerror!void {
         const self: *Self = @ptrCast(@alignCast(ptr));
+        self.frame = frame;
         const x = frame.x;
         const y = frame.y;
         const w = frame.w;
         const h = frame.h;
         const inner = w -| 2;
-        const border = if (self.focused) Color.overlay1 else Color.dim;
-        const label = if (self.focused) Color.lavender else Color.dim ++ Color.lavender;
+        const border = if (focused) Color.overlay1 else Color.dim;
+        const label = if (focused) Color.lavender else Color.dim ++ Color.lavender;
 
         // Top border
         try utils.moveTo(writer, x, y);
@@ -136,15 +156,14 @@ pub const Panel = struct {
         try writer.writeAll("╯");
         try writer.writeAll(Color.reset);
 
-        // Draw children
+        // Draw children — cascade our focus down
         const cy = y + 1;
         const inner_x = x + 2;
         const inner_w = w -| 4;
         for (self.children[0..self.child_count]) |child| {
             if (cy >= y + h - 1) break;
             const remaining = (y + h - 1) - cy;
-            try child.write(writer, cursor, .{ .x = inner_x, .y = cy, .w = inner_w, .h = remaining });
+            try child.write(writer, cursor, .{ .x = inner_x, .y = cy, .w = inner_w, .h = remaining }, focused);
         }
     }
-
 };

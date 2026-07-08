@@ -5,6 +5,7 @@ const Color = @import("../../color.zig");
 const Cursor = @import("../../canvas.zig").Cursor;
 const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Style = @import("../_component.zig").Style;
 const utils = @import("../../utils.zig");
@@ -21,7 +22,6 @@ pub const Viewport = struct {
     cursor_line: u16 = 0,
     visible_h: u16 = 0,
     total_lines: u16 = 0,
-    focused: bool = false,
     prev_key: u8 = 0,
 
     pub fn init(source: []const u8, style: Style) Viewport {
@@ -32,10 +32,37 @@ pub const Viewport = struct {
         return .{ .ptr = self, .vtable = &.{
             .write = write,
             .handleKey = handleKey,
+            .handleMouse = handleMouse,
         } };
     }
 
-    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame) anyerror!void {
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+
+        // Scroll
+        if (m.btn == .wheel_up or m.btn == .wheel_down) {
+            const delta: i16 = if (m.btn == .wheel_up) -1 else 1;
+            if (self.scrollBy(delta)) {
+                return .consumed;
+            }
+        }
+
+        // Hover
+        if (m.move) mq.post(.{ .update_pointer = utils.pointer_default });
+
+        return .ignored;
+    }
+
+    pub fn scrollBy(self: *Self, delta: i16) bool {
+        if (!self.overflowed) return false;
+        const max: i32 = self.total_lines -| self.visible_h;
+        const next = std.math.clamp(@as(i32, self.top_line) + delta, 0, max);
+        if (next == self.top_line) return false;
+        self.top_line = @intCast(next);
+        return true;
+    }
+
+    fn write(ptr: *anyopaque, writer: *Writer, _: *Cursor, frame: Frame, focused: bool) anyerror!void {
         const self: *Self = @ptrCast(@alignCast(ptr));
 
         self.visible_h = frame.h;
@@ -61,7 +88,7 @@ pub const Viewport = struct {
         }) {
             if (y >= frame.y + frame.h) break;
 
-            const is_cursor = self.focused and self.overflowed and line_idx == self.cursor_line;
+            const is_cursor = focused and self.overflowed and line_idx == self.cursor_line;
             if (is_cursor) {
                 try utils.moveTo(writer, frame.x -| 2, y);
                 try writer.writeAll(Color.lavender ++ "┃" ++ Color.reset);

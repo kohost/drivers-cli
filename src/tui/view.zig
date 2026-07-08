@@ -1,6 +1,7 @@
 const std = @import("std");
 const DriverView = @import("view/driver.zig").DriverView;
 const KeyResult = @import("input.zig").KeyResult;
+const Mouse = @import("input.zig").Mouse;
 const Cursor = @import("canvas.zig").Cursor;
 const MessageQueue = @import("message_queue.zig").MessageQueue;
 
@@ -25,6 +26,13 @@ pub const View = union(enum) {
     pub fn handleKey(self: *View, key: u8, mq: *MessageQueue) KeyResult {
         return switch (self.*) {
             .driver => |*v| v.handleKey(key, mq),
+            .none => .ignored,
+        };
+    }
+
+    pub fn handleMouse(self: *View, m: Mouse, mq: *MessageQueue) KeyResult {
+        return switch (self.*) {
+            .driver => |*v| v.handleMouse(m, mq),
             .none => .ignored,
         };
     }
