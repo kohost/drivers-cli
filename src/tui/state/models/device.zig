@@ -6,7 +6,7 @@ const Thermostat = @import("thermostat.zig").Thermostat;
 
 pub const Device = union(enum) {
     // alarm: Alarm,
-    // lock: Lock,
+    lock: Lock,
     // @"switch": Switch,
     thermostat: Thermostat,
 
@@ -28,7 +28,7 @@ pub const Device = union(enum) {
         };
     }
 
-    pub fn offline(self: Device) bool {
+    pub fn offline(self: Device) ?bool {
         return switch (self) {
             inline else => |d| d.offline,
         };
@@ -40,19 +40,19 @@ pub const Device = union(enum) {
         };
     }
 
-    pub fn modelNumber(self: Device) []const u8 {
+    pub fn modelNumber(self: Device) ?[]const u8 {
         return switch (self) {
             inline else => |d| d.model_number,
         };
     }
 
-    pub fn serialNumber(self: Device) []const u8 {
+    pub fn serialNumber(self: Device) ?[]const u8 {
         return switch (self) {
             inline else => |d| d.serial_number,
         };
     }
 
-    pub fn firmwareVersion(self: Device) []const u8 {
+    pub fn firmwareVersion(self: Device) ?[]const u8 {
         return switch (self) {
             inline else => |d| d.firmware_version,
         };

@@ -28,6 +28,12 @@ pub const list = [_]CommandInfo{
     .{ .name = "DeleteGroups", .alias = "dg", .description = "Delete groups", .args = "groups=[{}]" },
 };
 
+/// Resolves user input to a canonical command name for autocomplete.
+/// An exact `alias` match wins outright; otherwise returns the best
+/// prefix match, either a command name that starts with `str`, or the
+/// command whose name is a prefix of `str` (full name + trailing args).
+/// Ambiguous prefixes tie-break to the alphabetically smallest name.
+/// Returns null on empty input or no match.
 pub fn findMatch(str: []const u8) ?[]const u8 {
     if (str.len == 0) return null;
 
@@ -61,4 +67,12 @@ pub fn findMatch(str: []const u8) ?[]const u8 {
         }
     }
     return best_match;
+}
+
+/// Finds CommandInfo by name
+pub fn find(name: []const u8) ?CommandInfo {
+    for (list) |cmd| {
+        if (std.mem.eql(u8, cmd.name, name)) return cmd;
+    }
+    return null;
 }

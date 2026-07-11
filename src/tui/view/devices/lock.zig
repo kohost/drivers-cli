@@ -1,161 +1,138 @@
 const std = @import("std");
-const Panel = @import("../../components/panels.zig").Panel;
-const Toggle = @import("../../components/toggle.zig").Toggle;
-const Select = @import("../../components/select.zig").Select;
-const Rect = @import("../../types.zig").Rect;
-const KeyResult = @import("../../types.zig").KeyResult;
-const Color = @import("../../color.zig");
+const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
+const Component = @import("../Component.zig");
+const Writer = std.Io.Writer;
+const Cursor = @import("../../canvas.zig").Cursor;
+const Frame = Component.Frame;
+const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
+const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Lock = @import("../../state/models/lock.zig").Lock;
+const TextDisplay = @import("../component/text_display.zig").TextDisplay;
+const TextInput = @import("../component/text_input.zig").TextInput;
+const KeyValList = @import("../component/key_val_list.zig").KeyValList;
+const Toggle = @import("../component/toggle.zig").Toggle;
+const icons = @import("../icons.zig");
+const Color = @import("../../color.zig");
 
-pub const LockDetail = struct {
-    cursor: u8 = 0,
-    area: Rect,
-    lock: *Lock,
-    lock_toggle: Toggle,
-    mode_select: Select,
-    cmd_buf: [256]u8 = undefined,
+pub const LockView = struct {
+    const Self = @This();
 
-    const max_cursor: u8 = 1;
-    const mode_labels = [_][]const u8{ "Auto Lock", "Hold Open", "Lockdown" };
+    arena: ArenaAllocator,
+    source: *Lock,
+    vsource: *Lock,
+    list: KeyValList,
 
-    pub fn init(area: Rect, lock: *Lock) LockDetail {
-        return .{
-            .area = area,
-            .lock = lock,
-            .lock_toggle = Toggle.init(
-                area.x + 2,
-                area.y + 2,
-                .{ "Locked", "Locked" },
-            ),
-            .mode_select = Select.init(
-                area.x + 22,
-                area.y + 1,
-                &mode_labels,
-            ),
+    pub fn init(a: Allocator, vsrc: *Lock, src: *Lock) !LockView {
+        var self = LockView{
+            .arena = ArenaAllocator.init(a),
+            .source = src,
+            .vsource = vsrc,
+            .list = undefined,
         };
-    }
+        self.list = KeyValList.init(self.arena.allocator());
 
-    pub fn render(self: *LockDetail, stdout: std.Io.File, focused: bool) !u16 {
-        const height: u16 = 4;
-        var panel = Panel.init(self.area.x, self.area.y, self.area.width, height);
-        try panel.draw(stdout, .{ self.lock.name, self.lock.id, null, null });
+        // try self.createDisplayRow("name", &vsrc.name, .{});
+        try self.createTextInputRow("name", &src.name, &vsrc.name, .{});
+        try self.createDisplayRow("model", &vsrc.model_number, .{});
+        try self.createDisplayRow("serial", &vsrc.serial_number, .{});
+        try self.createDisplayRow("firmware", &vsrc.firmware_version, .{});
+        try self.createDisplayRow("watts", &vsrc.watts, .{});
+        try self.createTextInputRow("mode", &src.mode, &vsrc.mode, .{});
+        try self.createDisplayRow("supported", &vsrc.supported_modes, .{});
 
-        var pos_buf: [32]u8 = undefined;
-
-        // Row 1: labels
-        const state_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 2 });
-        try stdout.writeAll(state_label_pos);
-        try stdout.writeAll(Color.subtext0);
-        try stdout.writeAll("State:");
-        try stdout.writeAll(Color.reset);
-
-        const mode_label_pos = try std.fmt.bufPrint(&pos_buf, "\x1b[{d};{d}H", .{ self.area.y + 1, self.area.x + 15 });
-        try stdout.writeAll(mode_label_pos);
-        try stdout.writeAll(Color.subtext0);
-        try stdout.writeAll("Mode:");
-        try stdout.writeAll(Color.reset);
-
-        // Row 2: controls
-        self.lock_toggle.x = self.area.x + 2;
-        self.lock_toggle.y = self.area.y + 2;
-        try self.lock_toggle.render(stdout, self.lock.state == .locked, focused and self.cursor == 0);
-
-        self.mode_select.x = self.area.x + 15;
-        self.mode_select.y = self.area.y + 2;
-        try self.mode_select.render(stdout, @intFromEnum(self.lock.mode), focused and self.cursor == 1);
-
-        return height;
-    }
-
-    pub fn handleKey(self: *LockDetail, stdout: std.Io.File, c: u8) !KeyResult {
-        if (self.mode_select.open) {
-            return switch (c) {
-                'j' => blk: {
-                    if (self.mode_select.cursor < self.mode_select.labels.len - 1)
-                        self.mode_select.cursor += 1;
-                    _ = try self.render(stdout, true);
-                    break :blk .unhandled;
-                },
-                'k' => blk: {
-                    if (self.mode_select.cursor > 0)
-                        self.mode_select.cursor -= 1;
-                    _ = try self.render(stdout, true);
-                    break :blk .unhandled;
-                },
-                '\r', '\n' => blk: {
-                    const mode_str = switch (self.mode_select.cursor) {
-                        0 => "autoLock",
-                        1 => "holdOpen",
-                        2 => "lockdown",
-                        else => "autoLock",
-                    };
-                    try self.mode_select.close(stdout);
-                    _ = try self.render(stdout, true);
-                    const cmd = try std.fmt.bufPrint(
-                        &self.cmd_buf,
-                        "UpdateDevices devices=[{{\"id\":\"{s}\",\"mode\":\"{s}\"}}]",
-                        .{ self.lock.id, mode_str },
-                    );
-                    break :blk .{ .command = cmd };
-                },
-                'h' => blk: {
-                    try self.mode_select.close(stdout);
-                    self.cursor = 0;
-                    _ = try self.render(stdout, true);
-                    break :blk .unhandled;
-                },
-                0x1b => blk: {
-                    try self.mode_select.close(stdout);
-                    _ = try self.render(stdout, true);
-                    break :blk .unhandled;
-                },
-                else => .unhandled,
-            };
+        if (vsrc.state != null) try self.createToggleRow("state", &src.state, &vsrc.state, .locked, .unlocked, icons.lock, icons.unlock) else {
+            const lockAlloc = self.arena.allocator();
+            const p = try lockAlloc.create([]const u8);
+            p.* = icons.lock_alert;
+            try self.createDisplayRow("state", p, .{ .style = .{ .color = Color.red } });
         }
+        if (vsrc.offline) |*val| {
+            try self.createDisplayRow("online", val, .{ .invert = true });
+        }
+        if (vsrc.battery != null) try self.createDisplayRow("battery", &vsrc.battery, .{});
 
-        return switch (c) {
-            'l' => blk: {
-                if (self.cursor < max_cursor) {
-                    self.cursor += 1;
-                    _ = try self.render(stdout, true);
-                }
-                break :blk .unhandled;
-            },
-            'h' => blk: {
-                if (self.cursor > 0) {
-                    self.cursor -= 1;
-                    _ = try self.render(stdout, true);
-                }
-                break :blk .unhandled;
-            },
-            'j', 'k' => blk: {
-                if (self.cursor == 1) {
-                    self.mode_select.open = true;
-                    self.mode_select.cursor = @intFromEnum(self.lock.mode);
-                    _ = try self.render(stdout, true);
-                    break :blk .unhandled;
-                }
-                break :blk .unhandled;
-            },
-            '\r', '\n' => blk: {
-                if (self.cursor == 0) {
-                    const new_state = if (self.lock.state == .locked) "unlocked" else "locked";
-                    const cmd = try std.fmt.bufPrint(
-                        &self.cmd_buf,
-                        "UpdateDevices devices=[{{\"id\":\"{s}\",\"state\":\"{s}\"}}]",
-                        .{ self.lock.id, new_state },
-                    );
-                    break :blk .{ .command = cmd };
-                }
-                if (self.cursor == 1) {
-                    self.mode_select.open = true;
-                    self.mode_select.cursor = @intFromEnum(self.lock.mode);
-                    _ = try self.render(stdout, true);
-                    return .unhandled;
-                }
-                break :blk .unhandled;
-            },
-            else => .unhandled,
-        };
+        self.list.cursor = 0;
+        return self;
+    }
+
+    pub fn deinit(self: *LockView) void {
+        self.arena.deinit();
+    }
+
+    pub fn component(self: *Self) Component {
+        return .{ .ptr = self, .vtable = &.{
+            .write = write,
+            .handleKey = handleKey,
+            .handleMouse = handleMouse,
+        } };
+    }
+
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        return self.list.component().handleMouse(m, mq);
+    }
+
+    fn write(ptr: *anyopaque, w: *Writer, c: *Cursor, f: Frame, focused: bool) anyerror!void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        try self.list.component().write(w, c, f, focused);
+    }
+
+    fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        return self.list.component().handleKey(key, mq);
+    }
+
+    // Row builders
+    fn createDisplayRow(
+        s: *LockView,
+        lbl: []const u8,
+        src: anytype,
+        opts: TextDisplay(std.meta.Child(@TypeOf(src))).Options,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(src));
+        const a = s.arena.allocator();
+        const d = try a.create(TextDisplay(T));
+        d.* = .init(src, opts);
+        try s.list.addRow(lbl, d.component());
+    }
+
+    fn createTextInputRow(
+        self: *LockView,
+        lbl: []const u8,
+        src: anytype,
+        vsrc: anytype,
+        opts: TextInput(std.meta.Child(@TypeOf(src))).Options,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(src));
+        const a = self.arena.allocator();
+        const i = try a.create(TextInput(T));
+        i.* = .init(src, vsrc, opts);
+        try self.list.addRow(lbl, i.component());
+    }
+
+    fn createToggleRow(
+        self: *LockView,
+        lbl: []const u8,
+        src: anytype,
+        vsrc: anytype,
+        on: std.meta.Child(@TypeOf(vsrc)),
+        off: std.meta.Child(@TypeOf(vsrc)),
+        active: []const u8,
+        inactive: []const u8,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(vsrc));
+        const a = self.arena.allocator();
+        const i = try a.create(Toggle(T));
+        i.* = .init(.{
+            .source = src,
+            .vsource = vsrc,
+            .on = on,
+            .off = off,
+            .active = active,
+            .inactive = inactive,
+        });
+        try self.list.addRow(lbl, i.component());
     }
 };

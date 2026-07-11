@@ -20,6 +20,7 @@ pub fn TextInput(comptime T: type) type {
         buf_len: u8 = 0,
         cursor: u8 = 0,
         editing: bool = false,
+        commit_buf: [128]u8 = undefined,
 
         pub const Options = struct {
             style: Style = .{},
@@ -149,7 +150,10 @@ pub fn TextInput(comptime T: type) type {
         }
 
         fn isDirty(self: *Self) bool {
-            return self.source.* != self.vsource.*;
+            return switch (@typeInfo(T)) {
+                .pointer => !std.mem.eql(u8, self.source.*, self.vsource.*),
+                else => self.source.* != self.vsource.*,
+            };
         }
     };
 }

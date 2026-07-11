@@ -115,7 +115,11 @@ pub fn displayWidth(text: []const u8) u16 {
             width += 1;
             i += 3;
         } else {
-            width += 2;
+            // 4-byte UTF-8. Nerd Font glyphs live in the Supplementary Private
+            // Use Areas and render single-width; emoji (also 4-byte) are double-width.
+            const cp = if (i + 4 <= text.len) std.unicode.utf8Decode(text[i .. i + 4]) catch 0 else 0;
+            const nerd_pua = (cp >= 0xF0000 and cp <= 0xFFFFD) or (cp >= 0x100000 and cp <= 0x10FFFD);
+            width += if (nerd_pua) 1 else 2;
             i += 4;
         }
     }

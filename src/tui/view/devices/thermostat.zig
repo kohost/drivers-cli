@@ -37,12 +37,12 @@ pub const ThermostatView = struct {
         try self.createDisplayRow("serial", &vsrc.serial_number, .{});
         try self.createDisplayRow("firmware", &vsrc.firmware_version, .{});
         try self.createDisplayRow("watts", &vsrc.watts, .{});
-        try self.createDisplayRow("online", &vsrc.offline, .{ .invert = true });
         try self.createTextInputRow("scale", &src.temperature_scale, &vsrc.temperature_scale, .{});
-        try self.createDisplayRow("temp", &vsrc.current_temperature, .{ .style = .{ .suffix = "°" } });
         try self.createTextInputRow("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
+        try self.createDisplayRow("supported", &src.supported_hvac_modes, .{});
         try self.createDisplayRow("state", &src.hvac_state, .{});
         try self.createTextInputRow("fan", &src.fan_mode, &vsrc.fan_mode, .{});
+        try self.createDisplayRow("supported", &src.supported_fan_modes, .{});
         try self.createDisplayRow("fan state", &src.fan_state, .{});
 
         inline for (.{
@@ -54,8 +54,7 @@ pub const ThermostatView = struct {
             if (row[1].* != null) try self.createDisplayRow(row[0], row[1], .{});
         }
 
-        if (vsrc.ui_enabled != null) try self.createToggleRow("ui enabled", &src.ui_enabled, &vsrc.ui_enabled);
-
+        try self.createDisplayRow("temp", &vsrc.current_temperature, .{ .style = .{ .suffix = "°", .color = Color.overlay2 } });
         inline for (.{ "heat", "cool", "auto" }) |name| {
             if (@field(vsrc.setpoints, name) != null) {
                 try self.createTextInputRow(name, &@field(src.setpoints, name).?.value, &@field(vsrc.setpoints, name).?.value, .{ .style = .{ .suffix = "°" } });
@@ -63,6 +62,8 @@ pub const ThermostatView = struct {
                 try self.createTextInputRow(name ++ " max", &@field(src.setpoints, name).?.max, &@field(vsrc.setpoints, name).?.max, .{ .style = .{ .suffix = "°" } });
             }
         }
+        try self.createDisplayRow("online", &vsrc.offline, .{ .invert = true });
+        if (vsrc.ui_enabled != null) try self.createToggleRow("ui enabled", &src.ui_enabled, &vsrc.ui_enabled);
 
         self.list.cursor = 0;
         return self;
@@ -130,8 +131,8 @@ pub const ThermostatView = struct {
         vsrc: *?bool,
     ) !void {
         const a = self.arena.allocator();
-        const i = try a.create(Toggle);
-        i.* = .init(.{ .source = src, .vsource = vsrc });
+        const i = try a.create(Toggle(?bool));
+        i.* = .init(.{ .source = src, .vsource = vsrc, .on = true, .off = false });
         try self.list.addRow(lbl, i.component());
     }
 };

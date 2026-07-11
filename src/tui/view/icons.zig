@@ -2,7 +2,9 @@ const std = @import("std");
 
 // Nerd Font
 pub const search = "\u{f002}";
-pub const lock = "\u{f023}";
+pub const lock = "\u{f033e}";
+pub const unlock = "\u{f033f}";
+pub const lock_alert = "\u{f08ee}";
 pub const camera = "\u{f030}";
 pub const certificate = "\u{f0a3}";
 pub const lightbulb = "\u{f0eb}";

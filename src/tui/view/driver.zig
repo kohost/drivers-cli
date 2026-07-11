@@ -13,6 +13,8 @@ const KeyResult = @import("../input.zig").KeyResult;
 const Mouse = @import("../input.zig").Mouse;
 const MessageQueue = @import("../message_queue.zig").MessageQueue;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
+const LockView = @import("devices/lock.zig").LockView;
+const DetailView = @import("detail.zig").DetailView;
 const Select = @import("component/select.zig").Select;
 const Button = @import("component/button.zig").Button;
 const TextDisplay = @import("component/text_display.zig").TextDisplay;
@@ -44,7 +46,7 @@ pub const DriverView = struct {
     depth: u8,
     device_idx: ?usize,
     list_selected: ?usize,
-    thermostat_view: ThermostatView,
+    detail: DetailView,
     command_select: Select,
     url: TextDisplay([]const u8),
     send_button: Button,
@@ -89,7 +91,7 @@ pub const DriverView = struct {
             .depth = 0,
             .device_idx = null,
             .list_selected = null,
-            .thermostat_view = undefined,
+            .detail = .none,
             .command_select = Select.init("UpdateDevices", &command_names, .{
                 .color = Color.flamingo,
                 .secondary_color = Color.dim ++ Color.flamingo,
@@ -139,7 +141,7 @@ pub const DriverView = struct {
     }
 
     pub fn deinit(self: *DriverView) void {
-        if (self.depth == 1) self.thermostat_view.deinit();
+        if (self.depth == 1) self.detail.deinit();
         self.table.deinit();
         self.alloc.free(self.host_label);
         self.alloc.free(self.req_text);
@@ -156,15 +158,18 @@ pub const DriverView = struct {
             // Build table rows from state
             self.table.clearRows();
             for (self.state.devices.items) |device| {
+                const off = device.offline();
+                const online_glyph = if (off) |o| (if (o) "✗" else "✔") else "-";
+                const online_style = if (off) |o| (if (o) Color.red else Color.green) else Color.subtext0;
                 try self.table.addRow(&.{
                     .{ .value = .{ .string = icons.device_icon.get(device.deviceType()) orelse device.deviceType() } },
                     .{ .value = .{ .string = device.id() } },
                     .{ .value = .{ .string = device.name() } },
-                    .{ .value = .{ .string = if (device.modelNumber().len > 0) device.modelNumber() else "-" } },
-                    .{ .value = .{ .string = device.serialNumber() } },
-                    .{ .value = .{ .string = device.firmwareVersion() } },
+                    .{ .value = .{ .string = if (device.modelNumber()) |m| (if (m.len > 0) m else "-") else "-" } },
+                    .{ .value = .{ .string = if (device.serialNumber()) |s| (if (s.len > 0) s else "-") else "-" } },
+                    .{ .value = .{ .string = if (device.firmwareVersion()) |fw| (if (fw.len > 0) fw else "-") else "-" } },
                     .{ .value = .{ .int = device.watts() } },
-                    .{ .value = .{ .string = if (device.offline()) "✗" else "✔" }, .style = if (device.offline()) Color.red else Color.green },
+                    .{ .value = .{ .string = online_glyph }, .style = online_style },
                 });
             }
             self.panels[0].setChildren(&.{self.table.component()});
@@ -182,7 +187,7 @@ pub const DriverView = struct {
         } else if (self.depth == 1) {
             const manufacturer = if (self.state.system) |sys| sys.manufacturer else "Unknown";
 
-            self.panels[0].setChildren(&.{self.thermostat_view.component()});
+            self.panels[0].setChildren(&.{self.detail.component()});
 
             // Panel label: manufacturer/device-id
             if (self.device_idx) |idx| {
@@ -262,12 +267,13 @@ pub const DriverView = struct {
             const result = if (self.depth == 0)
                 self.table.handleKeyDirect(key, mq)
             else
-                self.thermostat_view.component().handleKey(key, mq);
+                self.detail.component().handleKey(key, mq);
             switch (result) {
                 .dive_in => return self.diveIn(mq),
                 .ignored => {
                     if (self.depth == 1 and (key == 'h' or key == 0x1b)) {
-                        self.thermostat_view.deinit();
+                        self.detail.deinit();
+                        self.detail = .none;
                         self.depth = 0;
                         self.table.selected = self.list_selected;
                         self.device_idx = null;
@@ -351,8 +357,10 @@ pub const DriverView = struct {
             };
             if (target) |t| {
                 if (t == .main and self.depth == 1) {
-                    const len = self.thermostat_view.list.rows.items.len;
-                    if (len > 0) self.thermostat_view.list.cursor = len - 1;
+                    if (self.detail.list()) |l| {
+                        const len = l.rows.items.len;
+                        if (len > 0) l.cursor = len - 1;
+                    }
                 }
                 self.setFocus(t);
                 mq.post(.render);
@@ -492,10 +500,12 @@ pub const DriverView = struct {
         // Focus cascades down at render time via write(); here we only seed
         // the thermostat list cursor when diving into the main panel.
         if (self.depth == 1) {
-            if (f == .main) {
-                if (self.thermostat_view.list.cursor == null) self.thermostat_view.list.cursor = 0;
-            } else {
-                self.thermostat_view.list.cursor = null;
+            if (self.detail.list()) |l| {
+                if (f == .main) {
+                    if (l.cursor == null) l.cursor = 0;
+                } else {
+                    l.cursor = null;
+                }
             }
         }
     }
@@ -538,8 +548,15 @@ pub const DriverView = struct {
             switch (vdevice.*) {
                 .thermostat => |*vd| switch (sdevice.*) {
                     .thermostat => |*sd| {
-                        self.thermostat_view = ThermostatView.init(self.alloc, vd, sd) catch return .consumed;
+                        self.detail = .{ .thermostat = ThermostatView.init(self.alloc, vd, sd) catch return .consumed };
                     },
+                    else => return .consumed,
+                },
+                .lock => |*vd| switch (sdevice.*) {
+                    .lock => |*sd| {
+                        self.detail = .{ .lock = LockView.init(self.alloc, vd, sd) catch return .consumed };
+                    },
+                    else => return .consumed,
                 },
             }
         }
@@ -550,7 +567,8 @@ pub const DriverView = struct {
 
     fn diveOut(self: *DriverView) KeyResult {
         if (self.depth != 1) return .ignored;
-        self.thermostat_view.deinit();
+        self.detail.deinit();
+        self.detail = .none;
         self.depth = 0;
         self.table.selected = self.list_selected;
         self.device_idx = null;

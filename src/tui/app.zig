@@ -9,6 +9,7 @@ const KeyResult = @import("input.zig").KeyResult;
 const Mouse = @import("input.zig").Mouse;
 const Allocator = std.mem.Allocator;
 const Transport = @import("transport.zig").Transport;
+const commands = @import("../commands.zig");
 
 const view_top: u16 = 5; // first row of the view region (below header/menu)
 
@@ -225,6 +226,24 @@ pub const App = struct {
         }
     }
 
+    fn buildData(self: *App, a: Allocator) std.json.ObjectMap {
+        var data: std.json.ObjectMap = .empty;
+
+        // Decide on data we need to send
+        const command_info: ?commands.CommandInfo = commands.find(self.command);
+        if (command_info) |info| {
+            if (info.args) |args| {
+                const prop = "devices";
+                if (std.mem.startsWith(u8, args, prop)) {
+                    const props = self.vstate.diff(self.state, a) catch return data;
+                    data.put(a, prop, props) catch return data;
+                }
+            }
+        }
+
+        return data;
+    }
+
     fn executeCommand(self: *App) !void {
         var arena = std.heap.ArenaAllocator.init(self.alloc);
         defer arena.deinit();
@@ -232,8 +251,7 @@ pub const App = struct {
 
         var cmd: std.json.ObjectMap = .empty;
         try cmd.put(a, "command", .{ .string = self.command });
-        var data: std.json.ObjectMap = .empty;
-        try data.put(a, "devices", try self.vstate.diff(self.state, a));
+        const data: std.json.ObjectMap = self.buildData(a);
         try cmd.put(a, "data", .{ .object = data });
 
         const root: std.json.Value = .{ .object = cmd };

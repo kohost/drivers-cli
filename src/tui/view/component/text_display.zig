@@ -20,7 +20,7 @@ pub fn TextDisplay(comptime T: type) type {
         invert: bool = false,
 
         pub const Options = struct {
-            style: Style = .{},
+            style: Style = .{ .color = Color.overlay2 },
             invert: bool = false,
         };
 
@@ -74,7 +74,15 @@ pub fn TextDisplay(comptime T: type) type {
         fn format(comptime U: type, v: U, w: *Writer) anyerror!void {
             switch (@typeInfo(U)) {
                 .optional => |o| if (v) |inner| try format(o.child, inner, w) else try w.writeAll("-"),
-                .pointer => try w.writeAll(v),
+                .pointer => |p| if (p.child == u8)
+                    try w.writeAll(v)
+                else switch (@typeInfo(p.child)) {
+                    .@"enum" => for (v, 0..) |e, i| {
+                        if (i > 0) try w.writeAll(", ");
+                        try w.writeAll(@tagName(e));
+                    },
+                    else => @compileError("TextDisplay: unsupported slice element " ++ @typeName(p.child)),
+                },
                 .@"enum" => try w.writeAll(@tagName(v)),
                 .int, .comptime_int, .float, .comptime_float => try w.print("{d}", .{v}),
                 .bool => try w.writeAll(if (v) Color.green ++ "✔" else Color.red ++ "✗"),

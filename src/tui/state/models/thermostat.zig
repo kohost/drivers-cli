@@ -5,6 +5,13 @@ fn dupeStr(alloc: std.mem.Allocator, s: []const u8) []const u8 {
     return alloc.dupe(u8, s) catch "";
 }
 
+/// Dupes a JSON string value, or null when absent/not a string.
+fn dupeOptStr(alloc: std.mem.Allocator, v: ?std.json.Value) ?[]const u8 {
+    const val = v orelse return null;
+    if (val != .string) return null;
+    return dupeStr(alloc, val.string);
+}
+
 pub const Thermostat = struct {
     alloc: std.mem.Allocator,
     id: []const u8,
@@ -23,8 +30,8 @@ pub const Thermostat = struct {
     supported_fan_modes: []const FanMode,
     setpoints: Setpoints,
     manufacturer: []const u8,
-    model_number: []const u8,
-    serial_number: []const u8,
+    model_number: ?[]const u8,
+    serial_number: ?[]const u8,
     firmware_version: []const u8,
     watts: u16,
     alerts: []const Alert,
@@ -84,8 +91,8 @@ pub const Thermostat = struct {
                 };
             } else .{},
             .manufacturer = dupeStr(alloc, if (obj.get("manufacturer")) |v| v.string else ""),
-            .serial_number = dupeStr(alloc, if (obj.get("serialNumber")) |v| v.string else ""),
-            .model_number = dupeStr(alloc, if (obj.get("modelNumber")) |v| v.string else ""),
+            .serial_number = dupeOptStr(alloc, obj.get("serialNumber")),
+            .model_number = dupeOptStr(alloc, obj.get("modelNumber")),
             .firmware_version = dupeStr(alloc, if (obj.get("firmwareVersion")) |v| v.string else ""),
             .watts = if (obj.get("watts")) |v| @intCast(v.integer) else 0,
             .alerts = &.{}, // TODO: parse array
@@ -100,8 +107,8 @@ pub const Thermostat = struct {
         if (self.name.len > 0) self.alloc.free(self.name);
         if (self.driver.len > 0) self.alloc.free(self.driver);
         if (self.manufacturer.len > 0) self.alloc.free(self.manufacturer);
-        if (self.serial_number.len > 0) self.alloc.free(self.serial_number);
-        if (self.model_number.len > 0) self.alloc.free(self.model_number);
+        if (self.serial_number) |s| if (s.len > 0) self.alloc.free(s);
+        if (self.model_number) |s| if (s.len > 0) self.alloc.free(s);
         if (self.firmware_version.len > 0) self.alloc.free(self.firmware_version);
         if (self.supported_hvac_modes.len > 0) self.alloc.free(self.supported_hvac_modes);
         if (self.supported_fan_modes.len > 0) self.alloc.free(self.supported_fan_modes);
@@ -210,8 +217,8 @@ pub const Thermostat = struct {
             .name = "",
             .driver = "",
             .manufacturer = "",
-            .model_number = "",
-            .serial_number = "",
+            .model_number = null,
+            .serial_number = null,
             .firmware_version = "",
             .watts = self.watts,
             .alerts = self.alerts,
@@ -238,8 +245,8 @@ pub const Thermostat = struct {
         thermostat.name = try dupeOwned(u8, alloc, self.name);
         thermostat.driver = try dupeOwned(u8, alloc, self.driver);
         thermostat.manufacturer = try dupeOwned(u8, alloc, self.manufacturer);
-        thermostat.model_number = try dupeOwned(u8, alloc, self.model_number);
-        thermostat.serial_number = try dupeOwned(u8, alloc, self.serial_number);
+        thermostat.model_number = if (self.model_number) |s| try dupeOwned(u8, alloc, s) else null;
+        thermostat.serial_number = if (self.serial_number) |s| try dupeOwned(u8, alloc, s) else null;
         thermostat.firmware_version = try dupeOwned(u8, alloc, self.firmware_version);
 
         thermostat.supported_fan_modes = try dupeOwned(FanMode, alloc, self.supported_fan_modes);
