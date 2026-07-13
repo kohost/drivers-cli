@@ -38,8 +38,7 @@ pub const LockView = struct {
         try self.list.addDisplay("serial", &vsrc.serial_number, .{});
         try self.list.addDisplay("firmware", &vsrc.firmware_version, .{});
         try self.list.addDisplay("watts", &vsrc.watts, .{});
-        try self.list.addInput("mode", &src.mode, &vsrc.mode, .{});
-        try self.list.addDisplay("supported", &vsrc.supported_modes, .{});
+        try self.list.addSelect("mode", &src.mode, &vsrc.mode, self.source.supported_modes);
 
         if (vsrc.state != null) try self.list.addToggle("state", &src.state, &vsrc.state, .locked, .unlocked, .{ .active = icons.lock, .inactive = icons.unlock }) else {
             const lockAlloc = self.arena.allocator();

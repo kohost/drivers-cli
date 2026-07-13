@@ -1,3 +1,12 @@
+const Component = @import("view/Component.zig");
+
+/// A component that has taken the mouse — an open dropdown. Events inside `frame`
+/// go straight to it; the first event outside closes it and releases.
+pub const Capture = struct {
+    component: Component,
+    frame: Component.Frame,
+};
+
 pub const Message = union(enum) {
     quit,
     open_input: u8,
@@ -7,6 +16,8 @@ pub const Message = union(enum) {
     render,
     send_command,
     update_pointer: []const u8,
+    capture_mouse: Capture,
+    release_mouse,
 };
 
 pub const MessageQueue = struct {

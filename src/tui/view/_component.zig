@@ -15,6 +15,7 @@ pub const Style = struct {
     padding_right: u8 = 0,
     prefix: []const u8 = "",
     suffix: []const u8 = "",
+    focus_marker: bool = true,
 };
 
 /// A pull-based value source: pairs a type-erased context (e.g. a model

@@ -5,6 +5,7 @@ const Layout = @import("view/layout.zig").Layout;
 const View = @import("view.zig").View;
 const DriverView = @import("view/driver.zig").DriverView;
 const MessageQueue = @import("./message_queue.zig").MessageQueue;
+const Capture = @import("./message_queue.zig").Capture;
 const KeyResult = @import("input.zig").KeyResult;
 const Mouse = @import("input.zig").Mouse;
 const Allocator = std.mem.Allocator;
@@ -32,6 +33,8 @@ pub const App = struct {
     mq: MessageQueue,
     transport: Transport,
     command: *commands.Command,
+    // An open dropdown owns the mouse until an event lands outside it.
+    capture: ?Capture = null,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -146,6 +149,17 @@ pub const App = struct {
     }
 
     pub fn handleMouse(self: *App, m: Mouse) bool {
+        // A captured component (open dropdown) gets everything inside its frame.
+        // The first event outside dismisses it, then dispatch continues as normal.
+        if (self.capture) |c| {
+            if (c.frame.contains(m.x, m.y)) {
+                _ = c.component.handleMouse(m, &self.mq);
+                return self.drain();
+            }
+            _ = c.component.handleKey(0x1b, &self.mq);
+            self.capture = null;
+        }
+
         // Outer focus: a click picks which top-level region owns the keyboard.
         // The driver sets its own inner focus during dispatch below.
         if (m.press and !m.move) {
@@ -185,6 +199,7 @@ pub const App = struct {
                     }
                 },
                 .view_changed => |idx| {
+                    self.capture = null; // the captured component belongs to the old view
                     self.swapView(idx);
                 },
                 .render => {
@@ -195,6 +210,8 @@ pub const App = struct {
                 // TODO: Silently swallowing errors with catch{} will want to surface.
                 .send_command => self.executeCommand() catch {},
                 .update_pointer => |seq| self.layout.pointer = seq,
+                .capture_mouse => |c| self.capture = c,
+                .release_mouse => self.capture = null,
             }
         }
 

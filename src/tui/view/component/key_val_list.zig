@@ -8,6 +8,7 @@ const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
 const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
+const Select = @import("./select.zig").Select;
 const TextDisplay = @import("text_display.zig").TextDisplay;
 const TextInput = @import("text_input.zig").TextInput;
 const Toggle = @import("./toggle.zig").Toggle;
@@ -59,6 +60,10 @@ pub const KeyValList = struct {
             if (lw > max_label) max_label = lw;
         }
         const value_col = max_label + 2;
+        const value_x = frame.x + value_col;
+        const value_w = frame.w -| value_col;
+
+        var overlay: ?struct { value: Component, y: u16 } = null;
 
         var current_row = frame.y;
         for (rows, 0..) |row, idx| {
@@ -83,10 +88,18 @@ pub const KeyValList = struct {
             const pad = value_col -| label_w;
             for (0..pad) |_| try writer.writeAll(" ");
 
-            const value_x = frame.x + value_col;
-            try row.value.write(writer, cursor, .{ .x = value_x, .y = current_row, .w = frame.w -| value_col, .h = 1 }, row_focused);
+            if (row_focused) {
+                overlay = .{ .value = row.value, .y = current_row };
+            } else {
+                try row.value.write(writer, cursor, .{ .x = value_x, .y = current_row, .w = value_w, .h = 1 }, false);
+            }
 
             current_row += 1;
+        }
+
+        // Focused row draws last so an open dropdown paints over the rows below it.
+        if (overlay) |o| {
+            try o.value.write(writer, cursor, .{ .x = value_x, .y = o.y, .w = value_w, .h = 1 }, true);
         }
     }
 
@@ -220,8 +233,14 @@ pub const KeyValList = struct {
         self: *KeyValList,
         lbl: []const u8,
         src: anytype,
-        vsource: anytype,
-    ) !void {}
+        vsrc: anytype,
+        options: []const std.meta.Child(@TypeOf(vsrc)),
+    ) !void {
+        const T = std.meta.Child(@TypeOf(vsrc));
+        const select = try self.alloc.create(Select(T));
+        select.* = .init(src, vsrc, options, .{ .focus_marker = false });
+        try self.addRow(lbl, select.component());
+    }
 
     pub fn get(self: *KeyValList, comptime T: type, label: []const u8) ?*T {
         for (self.rows.items) |item| {
@@ -234,7 +253,7 @@ pub const KeyValList = struct {
 
     pub fn cursorAt(self: *KeyValList, y: u16) void {
         if (y < self.frame.y) return;
-        const idx = y - self.frame.y;
-        if (idx < self.rows.items.len) self.cursor = idx;
+        const i = y - self.frame.y;
+        if (i < self.rows.items.len) self.cursor = i;
     }
 };

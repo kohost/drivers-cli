@@ -92,7 +92,7 @@ pub const DriverView = struct {
                 .tertiary_color = Color.flamingo,
                 .bg_color = Color.bg_lavender_dark,
                 .secondary_bg_color = Color.bg_surface0,
-                .padding_left = 1,
+                .padding_left = 0,
                 .padding_right = 1,
             }),
             // source wired in write() once the view is at its final address
@@ -372,8 +372,6 @@ pub const DriverView = struct {
             if (self.command_select.frame.contains(m.x, m.y)) {
                 self.setFocus(.command_select);
                 break :blk self.command_select.component();
-            } else if (self.command_select.open) {
-                self.command_select.open = false;
             }
             if (self.url.frame.contains(m.x, m.y))
                 break :blk self.url.component();

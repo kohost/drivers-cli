@@ -39,12 +39,9 @@ pub const ThermostatView = struct {
         try self.list.addDisplay("firmware", &vsrc.firmware_version, .{});
         try self.list.addDisplay("watts", &vsrc.watts, .{});
         try self.list.addInput("scale", &src.temperature_scale, &vsrc.temperature_scale, .{});
-        // try self.list.addInput("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
-        try self.list.addSelect("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
-        try self.list.addDisplay("supported", &src.supported_hvac_modes, .{});
+        try self.list.addSelect("mode", &src.hvac_mode, &vsrc.hvac_mode, src.supported_hvac_modes);
         try self.list.addDisplay("state", &src.hvac_state, .{});
-        try self.list.addInput("fan", &src.fan_mode, &vsrc.fan_mode, .{});
-        try self.list.addDisplay("supported", &src.supported_fan_modes, .{});
+        try self.list.addSelect("fan", &src.fan_mode, &vsrc.fan_mode, src.supported_fan_modes);
         try self.list.addDisplay("fan state", &src.fan_state, .{});
 
         inline for (.{
