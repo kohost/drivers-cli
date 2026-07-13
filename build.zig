@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
 
     // Add version from build options
     const options = b.addOptions();
-    const git_describe = b.run(&.{ "git", "describe", "--tags", "--abbrev=0" });
+    const git_describe = b.run(&.{ "git", "describe", "--tags" });
     options.addOption([]const u8, "version", git_describe);
     module.addOptions("build_options", options);
 

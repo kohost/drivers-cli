@@ -14,6 +14,7 @@ const TextDisplay = @import("../component/text_display.zig").TextDisplay;
 const TextInput = @import("../component/text_input.zig").TextInput;
 const Toggle = @import("../component/toggle.zig").Toggle;
 const KeyValList = @import("../component/key_val_list.zig").KeyValList;
+const Select = @import("../component/select.zig").Select;
 
 pub const ThermostatView = struct {
     const Self = @This();
@@ -32,18 +33,19 @@ pub const ThermostatView = struct {
         };
         self.list = KeyValList.init(self.arena.allocator());
 
-        try self.createDisplayRow("name", &vsrc.name, .{});
-        try self.createDisplayRow("model", &vsrc.model_number, .{});
-        try self.createDisplayRow("serial", &vsrc.serial_number, .{});
-        try self.createDisplayRow("firmware", &vsrc.firmware_version, .{});
-        try self.createDisplayRow("watts", &vsrc.watts, .{});
-        try self.createTextInputRow("scale", &src.temperature_scale, &vsrc.temperature_scale, .{});
-        try self.createTextInputRow("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
-        try self.createDisplayRow("supported", &src.supported_hvac_modes, .{});
-        try self.createDisplayRow("state", &src.hvac_state, .{});
-        try self.createTextInputRow("fan", &src.fan_mode, &vsrc.fan_mode, .{});
-        try self.createDisplayRow("supported", &src.supported_fan_modes, .{});
-        try self.createDisplayRow("fan state", &src.fan_state, .{});
+        try self.list.addDisplay("name", &vsrc.name, .{});
+        try self.list.addDisplay("model", &vsrc.model_number, .{});
+        try self.list.addDisplay("serial", &vsrc.serial_number, .{});
+        try self.list.addDisplay("firmware", &vsrc.firmware_version, .{});
+        try self.list.addDisplay("watts", &vsrc.watts, .{});
+        try self.list.addInput("scale", &src.temperature_scale, &vsrc.temperature_scale, .{});
+        // try self.list.addInput("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
+        try self.list.addSelect("mode", &src.hvac_mode, &vsrc.hvac_mode, .{});
+        try self.list.addDisplay("supported", &src.supported_hvac_modes, .{});
+        try self.list.addDisplay("state", &src.hvac_state, .{});
+        try self.list.addInput("fan", &src.fan_mode, &vsrc.fan_mode, .{});
+        try self.list.addDisplay("supported", &src.supported_fan_modes, .{});
+        try self.list.addDisplay("fan state", &src.fan_state, .{});
 
         inline for (.{
             .{ "humidity", &vsrc.current_humidity },
@@ -51,19 +53,27 @@ pub const ThermostatView = struct {
             .{ "delta", &vsrc.min_auto_delta },
             .{ "cycle rate", &vsrc.cycle_rate },
         }) |row| {
-            if (row[1].* != null) try self.createDisplayRow(row[0], row[1], .{});
+            if (row[1].* != null) try self.list.addDisplay(row[0], row[1], .{});
         }
 
-        try self.createDisplayRow("temp", &vsrc.current_temperature, .{ .style = .{ .suffix = "°", .color = Color.overlay2 } });
+        try self.list.addDisplay("temp", &vsrc.current_temperature, .{ .style = .{ .suffix = "°", .color = Color.overlay2 } });
         inline for (.{ "heat", "cool", "auto" }) |name| {
             if (@field(vsrc.setpoints, name) != null) {
-                try self.createTextInputRow(name, &@field(src.setpoints, name).?.value, &@field(vsrc.setpoints, name).?.value, .{ .style = .{ .suffix = "°" } });
-                try self.createTextInputRow(name ++ " min", &@field(src.setpoints, name).?.min, &@field(vsrc.setpoints, name).?.min, .{ .style = .{ .suffix = "°" } });
-                try self.createTextInputRow(name ++ " max", &@field(src.setpoints, name).?.max, &@field(vsrc.setpoints, name).?.max, .{ .style = .{ .suffix = "°" } });
+                try self.list.addInput(name, &@field(src.setpoints, name).?.value, &@field(vsrc.setpoints, name).?.value, .{ .style = .{ .suffix = "°" } });
+                try self.list.addInput(name ++ " min", &@field(src.setpoints, name).?.min, &@field(vsrc.setpoints, name).?.min, .{ .style = .{ .suffix = "°" } });
+                try self.list.addInput(name ++ " max", &@field(src.setpoints, name).?.max, &@field(vsrc.setpoints, name).?.max, .{ .style = .{ .suffix = "°" } });
             }
         }
-        try self.createDisplayRow("online", &vsrc.offline, .{ .invert = true });
-        if (vsrc.ui_enabled != null) try self.createToggleRow("ui enabled", &src.ui_enabled, &vsrc.ui_enabled);
+        try self.list.addDisplay("online", &vsrc.offline, .{ .invert = true });
+        if (vsrc.ui_enabled != null)
+            try self.list.addToggle(
+                "ui enabled",
+                &src.ui_enabled,
+                &vsrc.ui_enabled,
+                true,
+                false,
+                .{},
+            );
 
         self.list.cursor = 0;
         return self;
@@ -94,45 +104,5 @@ pub const ThermostatView = struct {
     fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
         const self: *Self = @ptrCast(@alignCast(ptr));
         return self.list.component().handleKey(key, mq);
-    }
-
-    // Row builders
-    fn createDisplayRow(
-        s: *ThermostatView,
-        lbl: []const u8,
-        src: anytype,
-        opts: TextDisplay(std.meta.Child(@TypeOf(src))).Options,
-    ) !void {
-        const T = std.meta.Child(@TypeOf(src));
-        const a = s.arena.allocator();
-        const d = try a.create(TextDisplay(T));
-        d.* = .init(src, opts);
-        try s.list.addRow(lbl, d.component());
-    }
-
-    fn createTextInputRow(
-        self: *ThermostatView,
-        lbl: []const u8,
-        src: anytype,
-        vsrc: anytype,
-        opts: TextInput(std.meta.Child(@TypeOf(src))).Options,
-    ) !void {
-        const T = std.meta.Child(@TypeOf(src));
-        const a = self.arena.allocator();
-        const i = try a.create(TextInput(T));
-        i.* = .init(src, vsrc, opts);
-        try self.list.addRow(lbl, i.component());
-    }
-
-    fn createToggleRow(
-        self: *ThermostatView,
-        lbl: []const u8,
-        src: *const ?bool,
-        vsrc: *?bool,
-    ) !void {
-        const a = self.arena.allocator();
-        const i = try a.create(Toggle(?bool));
-        i.* = .init(.{ .source = src, .vsource = vsrc, .on = true, .off = false });
-        try self.list.addRow(lbl, i.component());
     }
 };

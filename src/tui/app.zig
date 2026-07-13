@@ -31,7 +31,7 @@ pub const App = struct {
     input_prefix: u8,
     mq: MessageQueue,
     transport: Transport,
-    command: []const u8 = "UpdateDevices",
+    command: *commands.Command,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -49,10 +49,15 @@ pub const App = struct {
         errdefer alloc.destroy(vstate);
         vstate.* = try state.clone(alloc);
 
+        const command = try alloc.create(commands.Command);
+        errdefer alloc.destroy(command);
+        command.* = .UpdateDevices;
+
         return .{
             .alloc = alloc,
             .state = state,
             .vstate = vstate,
+            .command = command,
             .cols = cols,
             .rows = rows,
             .cfg = cfg,
@@ -63,6 +68,7 @@ pub const App = struct {
                 .state = state,
                 .vstate = vstate,
                 .appCfg = cfg,
+                .command = command,
                 .frame = .{ .x = x, .y = y, .w = width, .h = height },
             }) },
             .focused = 0,
@@ -76,6 +82,7 @@ pub const App = struct {
         self.view.deinit();
         self.vstate.deinit(); // frees the devices/strings inside the State
         self.alloc.destroy(self.vstate); // frees the State slot itself
+        self.alloc.destroy(self.command);
     }
 
     pub fn resize(self: *App, cols: u16, rows: u16) !void {
@@ -93,6 +100,7 @@ pub const App = struct {
                 .state = self.state,
                 .vstate = self.vstate,
                 .appCfg = self.cfg,
+                .command = self.command,
                 .frame = .{ .x = x, .y = y, .w = cols, .h = height },
             }),
         };
@@ -186,7 +194,6 @@ pub const App = struct {
                 },
                 // TODO: Silently swallowing errors with catch{} will want to surface.
                 .send_command => self.executeCommand() catch {},
-                .command_changed => |name| self.command = name,
                 .update_pointer => |seq| self.layout.pointer = seq,
             }
         }
@@ -215,6 +222,7 @@ pub const App = struct {
                     .state = self.state,
                     .vstate = self.vstate,
                     .appCfg = self.cfg,
+                    .command = self.command,
                     .frame = .{ .x = 1, .y = 5, .w = self.cols, .h = self.rows - 6 },
                 })) |dv| {
                     self.view = .{ .driver = dv };
@@ -230,14 +238,11 @@ pub const App = struct {
         var data: std.json.ObjectMap = .empty;
 
         // Decide on data we need to send
-        const command_info: ?commands.CommandInfo = commands.find(self.command);
-        if (command_info) |info| {
-            if (info.args) |args| {
-                const prop = "devices";
-                if (std.mem.startsWith(u8, args, prop)) {
-                    const props = self.vstate.diff(self.state, a) catch return data;
-                    data.put(a, prop, props) catch return data;
-                }
+        if (self.command.info().args) |args| {
+            const prop = "devices";
+            if (std.mem.startsWith(u8, args, prop)) {
+                const props = self.vstate.diff(self.state, a) catch return data;
+                data.put(a, prop, props) catch return data;
             }
         }
 
@@ -250,7 +255,7 @@ pub const App = struct {
         const a = arena.allocator();
 
         var cmd: std.json.ObjectMap = .empty;
-        try cmd.put(a, "command", .{ .string = self.command });
+        try cmd.put(a, "command", .{ .string = self.command.name() });
         const data: std.json.ObjectMap = self.buildData(a);
         try cmd.put(a, "data", .{ .object = data });
 

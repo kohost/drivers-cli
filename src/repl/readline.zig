@@ -50,7 +50,8 @@ fn showSuggestion(
     if (cursor != input_len) return;
     try stdout.writeStreamingAll(io, "\x1b[K");
 
-    const match = commands.findMatch(buf[0..input_len]) orelse return;
+    const match_cmd = commands.findMatch(buf[0..input_len]) orelse return;
+    const match = @tagName(match_cmd);
 
     if (match.len > input_len) {
         // Partial match — show remaining chars in dim
@@ -60,20 +61,12 @@ fn showSuggestion(
         try setCursor(stdout, io, prefix.len + cursor);
     } else if (input_len == match.len) {
         // Exact match — show args hint if available
-        const cmd = findCommand(match) orelse return;
-        const args = cmd.args orelse return;
+        const args = match_cmd.info().args orelse return;
         try stdout.writeStreamingAll(io, "\x1b[90m ");
         try stdout.writeStreamingAll(io, args);
         try stdout.writeStreamingAll(io, "\x1b[0m");
         try setCursor(stdout, io, prefix.len + cursor);
     }
-}
-
-fn findCommand(name: []const u8) ?commands.CommandInfo {
-    for (commands.list) |cmd| {
-        if (std.mem.eql(u8, cmd.name, name)) return cmd;
-    }
-    return null;
 }
 
 fn findArgSlots(str: []const u8) [8]?usize {
@@ -236,7 +229,8 @@ pub fn readUserInput(
                 }
             },
             .tab => {
-                if (commands.findMatch(buf[0..input_len])) |match| {
+                if (commands.findMatch(buf[0..input_len])) |match_cmd| {
+                    const match = @tagName(match_cmd);
                     if (match.len > input_len) {
                         // Complete command name
                         @memcpy(buf[0..match.len], match);
@@ -245,29 +239,24 @@ pub fn readUserInput(
                         arg_slot = 0;
                     } else if (input_len >= match.len) {
                         // Command complete, add/cycle args
-                        for (commands.list) |cmd| {
-                            if (std.mem.eql(u8, cmd.name, match)) {
-                                if (cmd.args) |args| {
-                                    const args_start = match.len + 1;
+                        if (match_cmd.info().args) |args| {
+                            const args_start = match.len + 1;
 
-                                    if (input_len == match.len) {
-                                        buf[input_len] = ' ';
-                                        @memcpy(buf[input_len + 1 .. input_len + 1 + args.len], args);
-                                        input_len += 1 + args.len;
-                                        arg_slot = 0;
-                                    }
+                            if (input_len == match.len) {
+                                buf[input_len] = ' ';
+                                @memcpy(buf[input_len + 1 .. input_len + 1 + args.len], args);
+                                input_len += 1 + args.len;
+                                arg_slot = 0;
+                            }
 
-                                    const slots = findArgSlots(buf[args_start..input_len]);
-                                    if (slots[arg_slot]) |slot_offset| {
-                                        cursor = args_start + slot_offset;
-                                    }
+                            const slots = findArgSlots(buf[args_start..input_len]);
+                            if (slots[arg_slot]) |slot_offset| {
+                                cursor = args_start + slot_offset;
+                            }
 
-                                    arg_slot += 1;
-                                    if (slots[arg_slot] == null) {
-                                        arg_slot = 0;
-                                    }
-                                }
-                                break;
+                            arg_slot += 1;
+                            if (slots[arg_slot] == null) {
+                                arg_slot = 0;
                             }
                         }
                     }
@@ -413,21 +402,23 @@ fn setCursor(stdout: std.Io.File, io: std.Io, col: usize) !void {
 }
 
 fn expandAlias(buf: *[1024]u8, input_len: *usize, cursor: *usize) bool {
-    for (commands.list) |cmd| {
-        if (cmd.alias) |alias| {
+    for (commands.all) |cmd| {
+        const info = cmd.info();
+        if (info.alias) |alias| {
             if (input_len.* == alias.len and std.mem.eql(u8, buf[0..input_len.*], alias)) {
-                @memcpy(buf[0..cmd.name.len], cmd.name);
-                input_len.* = cmd.name.len;
-                cursor.* = cmd.name.len;
+                const nm = @tagName(cmd);
+                @memcpy(buf[0..nm.len], nm);
+                input_len.* = nm.len;
+                cursor.* = nm.len;
 
-                if (cmd.args) |args| {
+                if (info.args) |args| {
                     buf[input_len.*] = ' ';
                     @memcpy(buf[input_len.* + 1 .. input_len.* + 1 + args.len], args);
                     input_len.* += 1 + args.len;
 
-                    const slots = findArgSlots(buf[cmd.name.len + 1 .. input_len.*]);
+                    const slots = findArgSlots(buf[nm.len + 1 .. input_len.*]);
                     if (slots[0]) |slot_offset| {
-                        cursor.* = cmd.name.len + 1 + slot_offset;
+                        cursor.* = nm.len + 1 + slot_offset;
                     }
                 }
                 return true;

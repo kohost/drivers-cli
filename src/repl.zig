@@ -43,11 +43,12 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
         if (input.len == 0) continue;
         if (std.mem.eql(u8, input, "exit")) break;
         if (std.mem.eql(u8, input, "help")) {
-            // Copies the array into new mutable var on stack
-            var sorted = commands.list;
-            std.mem.sort(commands.CommandInfo, &sorted, {}, struct {
-                fn cmp(_: void, a: commands.CommandInfo, b: commands.CommandInfo) bool {
-                    return std.mem.lessThan(u8, a.name, b.name);
+            // Copy into a mutable array to sort alphabetically
+            var sorted: [commands.all.len]commands.Command = undefined;
+            @memcpy(sorted[0..], commands.all);
+            std.mem.sort(commands.Command, &sorted, {}, struct {
+                fn cmp(_: void, a: commands.Command, b: commands.Command) bool {
+                    return std.mem.lessThan(u8, @tagName(a), @tagName(b));
                 }
             }.cmp);
             var buf: [4096]u8 = undefined;
@@ -55,7 +56,8 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
             try w.interface.print("\n{s:<20} {s:<8} {s}\n", .{ "Command", "Alias", "Description" });
             try w.interface.print("{s}\n", .{"-" ** 50});
             for (sorted) |c| {
-                try w.interface.print("{s:<20} {s:<8} {s}\n", .{ c.name, c.alias orelse "", c.description });
+                const info = c.info();
+                try w.interface.print("{s:<20} {s:<8} {s}\n", .{ @tagName(c), info.alias orelse "", info.description });
             }
             try w.interface.print("\n", .{});
             try w.interface.flush();

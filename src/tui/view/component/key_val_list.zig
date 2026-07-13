@@ -8,6 +8,9 @@ const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
 const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
+const TextDisplay = @import("text_display.zig").TextDisplay;
+const TextInput = @import("text_input.zig").TextInput;
+const Toggle = @import("./toggle.zig").Toggle;
 
 pub const KeyVal = struct { label: []const u8, value: Component };
 
@@ -41,42 +44,8 @@ pub const KeyValList = struct {
         } };
     }
 
-    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
-        const self: *Self = @ptrCast(@alignCast(ptr));
-
-        // Hover
-        const prev = self.cursor;
-        self.cursorAt(m.y);
-        if (prev != self.cursor) {
-            // Left a row, cancel any active edit on it (Esc = discard)
-            if (prev) |p| _ = self.rows.items[p].value.handleKey(0x1b, mq);
-        }
-
-        // Forward the event to that row's value component
-        if (self.cursor) |f| {
-            const result = self.rows.items[f].value.handleMouse(m, mq);
-            if (result == .consumed or result == .changed) return result;
-        }
-        return .ignored;
-    }
-
     pub fn addRow(self: *KeyValList, label: []const u8, value: Component) !void {
         try self.rows.append(self.alloc, .{ .label = label, .value = value });
-    }
-
-    pub fn get(self: *KeyValList, comptime T: type, label: []const u8) ?*T {
-        for (self.rows.items) |item| {
-            if (std.mem.eql(u8, item.label, label)) {
-                return @ptrCast(@alignCast(item.value.ptr));
-            }
-        }
-        return null;
-    }
-
-    pub fn cursorAt(self: *KeyValList, y: u16) void {
-        if (y < self.frame.y) return;
-        const idx = y - self.frame.y;
-        if (idx < self.rows.items.len) self.cursor = idx;
     }
 
     fn write(ptr: *anyopaque, writer: *Writer, cursor: *Cursor, frame: Frame, focused: bool) anyerror!void {
@@ -177,5 +146,95 @@ pub const KeyValList = struct {
             },
             else => return .ignored,
         }
+    }
+
+    pub fn handleMouse(ptr: *anyopaque, m: Mouse, mq: *MessageQueue) KeyResult {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+
+        // Hover
+        const prev = self.cursor;
+        self.cursorAt(m.y);
+        if (prev != self.cursor) {
+            // Left a row, cancel any active edit on it (Esc = discard)
+            if (prev) |p| _ = self.rows.items[p].value.handleKey(0x1b, mq);
+        }
+
+        // Forward the event to that row's value component
+        if (self.cursor) |f| {
+            const result = self.rows.items[f].value.handleMouse(m, mq);
+            if (result == .consumed or result == .changed) return result;
+        }
+        return .ignored;
+    }
+
+    // Row builders
+    pub fn addDisplay(
+        self: *KeyValList,
+        lbl: []const u8,
+        src: anytype,
+        opts: TextDisplay(std.meta.Child(@TypeOf(src))).Options,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(src));
+        const display = try self.alloc.create(TextDisplay(T));
+        display.* = .init(src, opts);
+        try self.addRow(lbl, display.component());
+    }
+
+    pub fn addInput(
+        self: *KeyValList,
+        lbl: []const u8,
+        src: anytype,
+        vsrc: anytype,
+        opts: TextInput(std.meta.Child(@TypeOf(src))).Options,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(src));
+        const input = try self.alloc.create(TextInput(T));
+        input.* = .init(src, vsrc, opts);
+        try self.addRow(lbl, input.component());
+    }
+
+    const toggleOpts = struct { active: []const u8 = "✔", inactive: []const u8 = "✗" };
+    pub fn addToggle(
+        self: *KeyValList,
+        lbl: []const u8,
+        src: anytype,
+        vsrc: anytype,
+        on: std.meta.Child(@TypeOf(vsrc)),
+        off: std.meta.Child(@TypeOf(vsrc)),
+        opts: toggleOpts,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(vsrc));
+        const toggle = try self.alloc.create(Toggle(T));
+        toggle.* = .init(.{
+            .source = src,
+            .vsource = vsrc,
+            .on = on,
+            .off = off,
+            .active = opts.active,
+            .inactive = opts.inactive,
+        });
+        try self.addRow(lbl, toggle.component());
+    }
+
+    pub fn addSelect(
+        self: *KeyValList,
+        lbl: []const u8,
+        src: anytype,
+        vsource: anytype,
+    ) !void {}
+
+    pub fn get(self: *KeyValList, comptime T: type, label: []const u8) ?*T {
+        for (self.rows.items) |item| {
+            if (std.mem.eql(u8, item.label, label)) {
+                return @ptrCast(@alignCast(item.value.ptr));
+            }
+        }
+        return null;
+    }
+
+    pub fn cursorAt(self: *KeyValList, y: u16) void {
+        if (y < self.frame.y) return;
+        const idx = y - self.frame.y;
+        if (idx < self.rows.items.len) self.cursor = idx;
     }
 };

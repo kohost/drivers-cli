@@ -24,13 +24,6 @@ const icons = @import("icons.zig");
 const commands = @import("../../commands.zig");
 const Writer = std.Io.Writer;
 
-const command_names = blk: {
-    var names: [commands.list.len][]const u8 = undefined;
-    for (commands.list, 0..) |cmd, i| {
-        names[i] = cmd.name;
-    }
-    break :blk names;
-};
 
 const Focus = enum { main, commands, request, response, command_select, send_button };
 
@@ -47,7 +40,7 @@ pub const DriverView = struct {
     device_idx: ?usize,
     list_selected: ?usize,
     detail: DetailView,
-    command_select: Select,
+    command_select: Select(commands.Command),
     url: TextDisplay([]const u8),
     send_button: Button,
     frame: Frame,
@@ -64,6 +57,7 @@ pub const DriverView = struct {
         state: *State,
         vstate: *State,
         appCfg: *const AppConfig,
+        command: *commands.Command,
         frame: Frame,
     };
 
@@ -92,7 +86,7 @@ pub const DriverView = struct {
             .device_idx = null,
             .list_selected = null,
             .detail = .none,
-            .command_select = Select.init("UpdateDevices", &command_names, .{
+            .command_select = Select(commands.Command).init(cfg.command, cfg.command, commands.all, .{
                 .color = Color.flamingo,
                 .secondary_color = Color.dim ++ Color.flamingo,
                 .tertiary_color = Color.flamingo,
@@ -296,13 +290,8 @@ pub const DriverView = struct {
         } else if (self.focused) |f| {
             // Forward keys to Select when focused
             if (f == .command_select) {
-                const was_open = self.command_select.open;
                 const select_result = self.command_select.component().handleKey(key, mq);
-                if (select_result == .consumed) {
-                    const just_committed = was_open and !self.command_select.open and self.command_select.selected != self.command_select.previous;
-                    if (just_committed) {
-                        mq.post(.{ .command_changed = self.command_select.options[self.command_select.selected] });
-                    }
+                if (select_result == .consumed or select_result == .changed) {
                     return .consumed;
                 }
             }
@@ -384,7 +373,6 @@ pub const DriverView = struct {
                 self.setFocus(.command_select);
                 break :blk self.command_select.component();
             } else if (self.command_select.open) {
-                self.command_select.selected = self.command_select.previous;
                 self.command_select.open = false;
             }
             if (self.url.frame.contains(m.x, m.y))
@@ -407,11 +395,6 @@ pub const DriverView = struct {
         };
 
         const result = if (target) |t| t.handleMouse(m, mq) else .ignored;
-
-        // New command
-        if (self.focused == .command_select and result == .changed) {
-            mq.post(.{ .command_changed = self.command_select.options[self.command_select.selected] });
-        }
 
         // Dive in
         if (result == .dive_in) return self.diveIn(mq);

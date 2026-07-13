@@ -33,25 +33,24 @@ pub const LockView = struct {
         };
         self.list = KeyValList.init(self.arena.allocator());
 
-        // try self.createDisplayRow("name", &vsrc.name, .{});
-        try self.createTextInputRow("name", &src.name, &vsrc.name, .{});
-        try self.createDisplayRow("model", &vsrc.model_number, .{});
-        try self.createDisplayRow("serial", &vsrc.serial_number, .{});
-        try self.createDisplayRow("firmware", &vsrc.firmware_version, .{});
-        try self.createDisplayRow("watts", &vsrc.watts, .{});
-        try self.createTextInputRow("mode", &src.mode, &vsrc.mode, .{});
-        try self.createDisplayRow("supported", &vsrc.supported_modes, .{});
+        try self.list.addDisplay("name", &src.name, .{});
+        try self.list.addDisplay("model", &vsrc.model_number, .{});
+        try self.list.addDisplay("serial", &vsrc.serial_number, .{});
+        try self.list.addDisplay("firmware", &vsrc.firmware_version, .{});
+        try self.list.addDisplay("watts", &vsrc.watts, .{});
+        try self.list.addInput("mode", &src.mode, &vsrc.mode, .{});
+        try self.list.addDisplay("supported", &vsrc.supported_modes, .{});
 
-        if (vsrc.state != null) try self.createToggleRow("state", &src.state, &vsrc.state, .locked, .unlocked, icons.lock, icons.unlock) else {
+        if (vsrc.state != null) try self.list.addToggle("state", &src.state, &vsrc.state, .locked, .unlocked, .{ .active = icons.lock, .inactive = icons.unlock }) else {
             const lockAlloc = self.arena.allocator();
             const p = try lockAlloc.create([]const u8);
             p.* = icons.lock_alert;
-            try self.createDisplayRow("state", p, .{ .style = .{ .color = Color.red } });
+            try self.list.addDisplay("state", p, .{ .style = .{ .color = Color.red } });
         }
         if (vsrc.offline) |*val| {
-            try self.createDisplayRow("online", val, .{ .invert = true });
+            try self.list.addDisplay("online", val, .{ .invert = true });
         }
-        if (vsrc.battery != null) try self.createDisplayRow("battery", &vsrc.battery, .{});
+        if (vsrc.battery != null) try self.list.addDisplay("battery", &vsrc.battery, .{});
 
         self.list.cursor = 0;
         return self;
@@ -82,57 +81,5 @@ pub const LockView = struct {
     fn handleKey(ptr: *anyopaque, key: u8, mq: *MessageQueue) KeyResult {
         const self: *Self = @ptrCast(@alignCast(ptr));
         return self.list.component().handleKey(key, mq);
-    }
-
-    // Row builders
-    fn createDisplayRow(
-        s: *LockView,
-        lbl: []const u8,
-        src: anytype,
-        opts: TextDisplay(std.meta.Child(@TypeOf(src))).Options,
-    ) !void {
-        const T = std.meta.Child(@TypeOf(src));
-        const a = s.arena.allocator();
-        const d = try a.create(TextDisplay(T));
-        d.* = .init(src, opts);
-        try s.list.addRow(lbl, d.component());
-    }
-
-    fn createTextInputRow(
-        self: *LockView,
-        lbl: []const u8,
-        src: anytype,
-        vsrc: anytype,
-        opts: TextInput(std.meta.Child(@TypeOf(src))).Options,
-    ) !void {
-        const T = std.meta.Child(@TypeOf(src));
-        const a = self.arena.allocator();
-        const i = try a.create(TextInput(T));
-        i.* = .init(src, vsrc, opts);
-        try self.list.addRow(lbl, i.component());
-    }
-
-    fn createToggleRow(
-        self: *LockView,
-        lbl: []const u8,
-        src: anytype,
-        vsrc: anytype,
-        on: std.meta.Child(@TypeOf(vsrc)),
-        off: std.meta.Child(@TypeOf(vsrc)),
-        active: []const u8,
-        inactive: []const u8,
-    ) !void {
-        const T = std.meta.Child(@TypeOf(vsrc));
-        const a = self.arena.allocator();
-        const i = try a.create(Toggle(T));
-        i.* = .init(.{
-            .source = src,
-            .vsource = vsrc,
-            .on = on,
-            .off = off,
-            .active = active,
-            .inactive = inactive,
-        });
-        try self.list.addRow(lbl, i.component());
     }
 };

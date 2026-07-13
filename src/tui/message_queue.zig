@@ -6,7 +6,6 @@ pub const Message = union(enum) {
     view_changed: usize,
     render,
     send_command,
-    command_changed: []const u8,
     update_pointer: []const u8,
 };
 
