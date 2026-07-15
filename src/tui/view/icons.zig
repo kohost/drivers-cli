@@ -18,12 +18,14 @@ pub const thermometer = "\u{f2c9}";
 pub const window = "\u{f2d2}";
 pub const send = "\u{f1d9}";
 pub const walking = "\u{f554}";
+pub const sprinkler = "\u{f058c}";
 
 pub const device_icon = std.StaticStringMap([]const u8).initComptime(.{
     .{ "alarm", bell },
     .{ "dimmer", lightbulb },
     .{ "light", lightbulb },
     .{ "switch", toggle },
+    .{ "irrigation", sprinkler },
     .{ "lock", lock },
     .{ "mediaSource", tv },
     .{ "thermostat", thermometer },

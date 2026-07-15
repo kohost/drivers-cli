@@ -14,6 +14,7 @@ const Mouse = @import("../input.zig").Mouse;
 const MessageQueue = @import("../message_queue.zig").MessageQueue;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const LockView = @import("devices/lock.zig").LockView;
+const SwitchView = @import("devices/switch.zig").SwitchView;
 const DetailView = @import("detail.zig").DetailView;
 const Select = @import("component/select.zig").Select;
 const Button = @import("component/button.zig").Button;
@@ -156,7 +157,7 @@ pub const DriverView = struct {
                 const online_glyph = if (off) |o| (if (o) "✗" else "✔") else "-";
                 const online_style = if (off) |o| (if (o) Color.red else Color.green) else Color.subtext0;
                 try self.table.addRow(&.{
-                    .{ .value = .{ .string = icons.device_icon.get(device.deviceType()) orelse device.deviceType() } },
+                    .{ .value = .{ .string = (if (device.discriminator().len > 0) icons.device_icon.get(device.discriminator()) else null) orelse icons.device_icon.get(device.deviceType()) orelse device.deviceType() } },
                     .{ .value = .{ .string = device.id() } },
                     .{ .value = .{ .string = device.name() } },
                     .{ .value = .{ .string = if (device.modelNumber()) |m| (if (m.len > 0) m else "-") else "-" } },
@@ -536,6 +537,12 @@ pub const DriverView = struct {
                 .lock => |*vd| switch (sdevice.*) {
                     .lock => |*sd| {
                         self.detail = .{ .lock = LockView.init(self.alloc, vd, sd) catch return .consumed };
+                    },
+                    else => return .consumed,
+                },
+                .@"switch" => |*vd| switch (sdevice.*) {
+                    .@"switch" => |*sd| {
+                        self.detail = .{ .@"switch" = SwitchView.init(self.alloc, vd, sd) catch return .consumed };
                     },
                     else => return .consumed,
                 },

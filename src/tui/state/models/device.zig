@@ -7,7 +7,7 @@ const Thermostat = @import("thermostat.zig").Thermostat;
 pub const Device = union(enum) {
     // alarm: Alarm,
     lock: Lock,
-    // @"switch": Switch,
+    @"switch": Switch,
     thermostat: Thermostat,
 
     pub fn id(self: Device) []const u8 {
@@ -25,6 +25,12 @@ pub const Device = union(enum) {
     pub fn deviceType(self: Device) []const u8 {
         return switch (self) {
             inline else => |_, tag| @tagName(tag),
+        };
+    }
+
+    pub fn discriminator(self: Device) []const u8 {
+        return switch (self) {
+            inline else => |d| d.discriminator,
         };
     }
 
@@ -95,6 +101,15 @@ pub const Device = union(enum) {
     pub fn revert(self: *Device, source: *const Device) void {
         return switch (self.*) {
             inline else => |*d, tag| d.revert(&@field(source.*, @tagName(tag))),
+        };
+    }
+
+    pub fn merge(self: *Device, old: *const Device, new: *const Device) void {
+        return switch (self.*) {
+            inline else => |*d, tag| d.merge(
+                &@field(old.*, @tagName(tag)),
+                &@field(new.*, @tagName(tag)),
+            ),
         };
     }
 

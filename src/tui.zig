@@ -8,6 +8,7 @@ const Mouse = @import("./tui/input.zig").Mouse;
 const parseEscape = @import("./tui/input.zig").parseEscape;
 const parseInput = @import("./tui/input.zig").parseInput;
 const utils = @import("./tui/utils.zig");
+const Events = @import("tui/events.zig").Events;
 
 const TermSize = struct { cols: u16, rows: u16 };
 
@@ -49,10 +50,20 @@ pub fn run(cfg: Config, alloc: std.mem.Allocator, io: std.Io) !void {
     defer canvas.deinit();
     try canvas.render(&app.layout);
 
+    // AMQP
+    var rx_mem: [4096]u8 = undefined;
+    var tx_mem: [4096]u8 = undefined;
+    var broker: Events = undefined;
+    const connected = if (broker.init(io, &rx_mem, &tx_mem, &cfg)) true else |err| blk: {
+        std.log.scoped(.events).warn("amqp connect failed: {s}", .{@errorName(err)});
+        break :blk false;
+    };
+    defer if (connected) broker.deinit();
+
     // Posix
     const kq = std.c.kqueue();
     if (kq < 0) return error.KqueueFailed;
-    try handleEvents(kq, io, stdin, &size, &app, &canvas);
+    try handleEvents(kq, io, stdin, &size, &app, &canvas, if (connected) &broker else null);
 }
 
 fn setup() !std.posix.termios {
@@ -91,11 +102,12 @@ fn handleEvents(
     size: *TermSize,
     app: *App,
     canvas: *Canvas,
+    broker: ?*Events,
 ) !void {
     // Register two events with the kernal:
     // 1. stdin has data to read (keypress)
     // 2. SIGWINCH was delivered (terminal resized)
-    var changes = [_]std.c.Kevent{ .{
+    var changes = [3]std.c.Kevent{ .{
         .ident = @intCast(stdin.handle),
         .filter = std.c.EVFILT.READ,
         .flags = std.c.EV.ADD,
@@ -109,10 +121,23 @@ fn handleEvents(
         .fflags = 0,
         .data = 0,
         .udata = 0,
-    } };
+    }, undefined };
+
+    var change_count: usize = 2;
+    if (broker) |b| {
+        changes[2] = .{
+            .ident = @intCast(b.fd()),
+            .filter = std.c.EVFILT.READ,
+            .flags = std.c.EV.ADD,
+            .fflags = 0,
+            .data = 0,
+            .udata = 0,
+        };
+        change_count = 3;
+    }
 
     // Buffer for the kernel to write fired events into
-    var events: [2]std.c.Kevent = undefined;
+    var events: [3]std.c.Kevent = undefined;
 
     // Persists across reads so escape sequences split across reads survive.
     var pending: [256]u8 = undefined;
@@ -124,7 +149,7 @@ fn handleEvents(
         const n = std.c.kevent(
             kq,
             &changes,
-            @intCast(changes.len),
+            @intCast(change_count),
             &events,
             @intCast(events.len),
             null,
@@ -144,6 +169,15 @@ fn handleEvents(
             // Input available - drain it into the persistent buffer, then parse
             // complete tokens off the front. Sequences split across reads survive.
             if (ev.filter == std.c.EVFILT.READ) {
+                if (broker) |b| {
+                    if (ev.ident == @as(usize, @intCast(b.fd()))) {
+                        const msg = b.next() catch continue;
+                        const parsed = std.json.parseFromSlice(std.json.Value, app.alloc, msg.body, .{}) catch continue;
+                        defer parsed.deinit();
+                        if (app.applyEvent(parsed.value) catch false) try canvas.render(&app.layout);
+                        continue;
+                    }
+                }
                 var chunk: [256]u8 = undefined;
                 const nr = stdin.readStreaming(io, &.{&chunk}) catch continue;
                 // The event fired but the stream is finished, there's nothing

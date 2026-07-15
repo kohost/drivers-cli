@@ -34,6 +34,7 @@ pub const Lock = struct {
     id: []const u8,
     name: []const u8,
     driver: []const u8,
+    discriminator: []const u8,
     state: ?State,
     mode: Mode,
     supported_modes: []const Mode,
@@ -55,6 +56,7 @@ pub const Lock = struct {
             .id = dupeStr(alloc, if (obj.get("id")) |v| v.string else ""),
             .name = dupeStr(alloc, if (obj.get("name")) |v| v.string else ""),
             .driver = dupeStr(alloc, if (obj.get("driver")) |v| v.string else ""),
+            .discriminator = dupeStr(alloc, if (obj.get("discriminator")) |v| v.string else ""),
             .state = if (obj.get("state")) |v|
                 (if (v == .string) (if (std.mem.eql(u8, v.string, "locked")) .locked else .unlocked) else null)
             else
@@ -79,6 +81,7 @@ pub const Lock = struct {
         if (self.id.len > 0) self.alloc.free(self.id);
         if (self.name.len > 0) self.alloc.free(self.name);
         if (self.driver.len > 0) self.alloc.free(self.driver);
+        if (self.discriminator.len > 0) self.alloc.free(self.discriminator);
         if (self.manufacturer.len > 0) self.alloc.free(self.manufacturer);
         if (self.serial_number) |s| if (s.len > 0) self.alloc.free(s);
         if (self.model_number) |s| if (s.len > 0) self.alloc.free(s);
@@ -120,6 +123,7 @@ pub const Lock = struct {
             .id = "",
             .name = "",
             .driver = "",
+            .discriminator = "",
             .state = self.state,
             .mode = self.mode,
             .supported_modes = &.{},
@@ -137,6 +141,7 @@ pub const Lock = struct {
         lock.id = try dupeOwned(alloc, self.id);
         lock.name = try dupeOwned(alloc, self.name);
         lock.driver = try dupeOwned(alloc, self.driver);
+        lock.discriminator = try dupeOwned(alloc, self.discriminator);
         lock.manufacturer = try dupeOwned(alloc, self.manufacturer);
         lock.model_number = if (self.model_number) |s| try dupeOwned(alloc, s) else null;
         lock.serial_number = if (self.serial_number) |s| try dupeOwned(alloc, s) else null;
@@ -166,5 +171,14 @@ pub const Lock = struct {
             changed = true;
         }
         return changed;
+    }
+
+    pub fn merge(self: *Lock, old: *const Lock, new: *const Lock) void {
+        if (std.meta.eql(self.state, old.state)) self.state = new.state;
+        if (std.meta.eql(self.mode, old.mode)) self.mode = new.mode;
+
+        self.watts = new.watts;
+        self.offline = new.offline;
+        self.battery = new.battery;
     }
 };

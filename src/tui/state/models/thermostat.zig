@@ -17,6 +17,7 @@ pub const Thermostat = struct {
     id: []const u8,
     name: []const u8,
     driver: []const u8,
+    discriminator: []const u8,
     current_temperature: f32,
     current_humidity: ?f32,
     min_auto_delta: ?u8,
@@ -63,6 +64,7 @@ pub const Thermostat = struct {
             .id = dupeStr(alloc, if (obj.get("id")) |v| v.string else ""),
             .name = dupeStr(alloc, if (obj.get("name")) |v| v.string else ""),
             .driver = dupeStr(alloc, if (obj.get("driver")) |v| v.string else ""),
+            .discriminator = dupeStr(alloc, if (obj.get("discriminator")) |v| v.string else ""),
             .current_temperature = if (obj.get("currentTemperature")) |v| switch (v) {
                 .float => |f| @floatCast(f),
                 .integer => |i| @floatFromInt(i),
@@ -106,6 +108,7 @@ pub const Thermostat = struct {
         if (self.id.len > 0) self.alloc.free(self.id);
         if (self.name.len > 0) self.alloc.free(self.name);
         if (self.driver.len > 0) self.alloc.free(self.driver);
+        if (self.discriminator.len > 0) self.alloc.free(self.discriminator);
         if (self.manufacturer.len > 0) self.alloc.free(self.manufacturer);
         if (self.serial_number) |s| if (s.len > 0) self.alloc.free(s);
         if (self.model_number) |s| if (s.len > 0) self.alloc.free(s);
@@ -216,6 +219,7 @@ pub const Thermostat = struct {
             .id = "",
             .name = "",
             .driver = "",
+            .discriminator = "",
             .manufacturer = "",
             .model_number = null,
             .serial_number = null,
@@ -244,6 +248,7 @@ pub const Thermostat = struct {
         thermostat.id = try dupeOwned(u8, alloc, self.id);
         thermostat.name = try dupeOwned(u8, alloc, self.name);
         thermostat.driver = try dupeOwned(u8, alloc, self.driver);
+        thermostat.discriminator = try dupeOwned(u8, alloc, self.discriminator);
         thermostat.manufacturer = try dupeOwned(u8, alloc, self.manufacturer);
         thermostat.model_number = if (self.model_number) |s| try dupeOwned(u8, alloc, s) else null;
         thermostat.serial_number = if (self.serial_number) |s| try dupeOwned(u8, alloc, s) else null;
@@ -268,6 +273,29 @@ pub const Thermostat = struct {
     pub fn revert(self: *Thermostat, source: *const Thermostat) void {
         inline for (wire_fields) |f| @field(self, f[0]) = @field(source, f[0]);
         self.setpoints = source.setpoints;
+    }
+
+    /// Inbound event: `old` is what canonical state held before it, `new` after.
+    /// A field the user changed (self != old) is their edit and survives; every
+    /// other field tracks the broker. Strings/slices are owned by their own State,
+    /// so they're never copied across.
+    pub fn merge(self: *Thermostat, old: *const Thermostat, new: *const Thermostat) void {
+        inline for (wire_fields) |f| {
+            if (std.meta.eql(@field(self, f[0]), @field(old, f[0])))
+                @field(self, f[0]) = @field(new, f[0]);
+        }
+        if (std.meta.eql(self.setpoints, old.setpoints)) self.setpoints = new.setpoints;
+
+        // Read-only: never edited, so always canonical.
+        self.current_temperature = new.current_temperature;
+        self.current_humidity = new.current_humidity;
+        self.hvac_state = new.hvac_state;
+        self.fan_state = new.fan_state;
+        self.humidity_scale = new.humidity_scale;
+        self.min_auto_delta = new.min_auto_delta;
+        self.cycle_rate = new.cycle_rate;
+        self.watts = new.watts;
+        self.offline = new.offline;
     }
 
     pub fn diff(self: *const Thermostat, source: *const Thermostat, a: std.mem.Allocator, out: *std.json.ObjectMap) !bool {

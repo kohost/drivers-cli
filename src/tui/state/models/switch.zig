@@ -10,7 +10,8 @@ pub const Switch = struct {
     id: []const u8,
     name: []const u8,
     driver: []const u8,
-    state: enum { on, off },
+    discriminator: []const u8,
+    state: State,
     manufacturer: []const u8,
     model_number: []const u8,
     serial_number: []const u8,
@@ -19,7 +20,7 @@ pub const Switch = struct {
     alerts: []const Alert,
     offline: bool,
 
-    pub const Mode = enum { autoSwitch, holdOpen, lockdown };
+    pub const State = enum { on, off };
 
     pub fn fromJson(alloc: std.mem.Allocator, obj: std.json.ObjectMap) Switch {
         return .{
@@ -27,6 +28,7 @@ pub const Switch = struct {
             .id = dupeStr(alloc, if (obj.get("id")) |v| v.string else ""),
             .name = dupeStr(alloc, if (obj.get("name")) |v| v.string else ""),
             .driver = dupeStr(alloc, if (obj.get("driver")) |v| v.string else ""),
+            .discriminator = dupeStr(alloc, if (obj.get("discriminator")) |v| v.string else ""),
             .state = blk: {
                 const s = if (obj.get("state")) |v| v.string else "off";
                 break :blk if (std.mem.eql(u8, s, "on")) .on else .off;
@@ -45,6 +47,7 @@ pub const Switch = struct {
         if (self.id.len > 0) self.alloc.free(self.id);
         if (self.name.len > 0) self.alloc.free(self.name);
         if (self.driver.len > 0) self.alloc.free(self.driver);
+        if (self.discriminator.len > 0) self.alloc.free(self.discriminator);
         if (self.manufacturer.len > 0) self.alloc.free(self.manufacturer);
         if (self.serial_number.len > 0) self.alloc.free(self.serial_number);
         if (self.model_number.len > 0) self.alloc.free(self.model_number);
@@ -54,7 +57,7 @@ pub const Switch = struct {
     pub fn update(self: *Switch, json: std.json.ObjectMap) bool {
         var changed = false;
         if (json.get("state")) |v| {
-            const new_state: @TypeOf(self.state) = if (std.mem.eql(u8, v.string, "on")) .on else .off;
+            const new_state: State = if (std.mem.eql(u8, v.string, "on")) .on else .off;
             if (self.state != new_state) {
                 self.state = new_state;
                 changed = true;
@@ -67,5 +70,56 @@ pub const Switch = struct {
             }
         }
         return changed;
+    }
+
+    pub fn clone(self: *const Switch, alloc: std.mem.Allocator) !Switch {
+        var sw: Switch = .{
+            .alloc = alloc,
+            .id = "",
+            .name = "",
+            .driver = "",
+            .discriminator = "",
+            .state = self.state,
+            .manufacturer = "",
+            .model_number = "",
+            .serial_number = "",
+            .firmware_version = "",
+            .watts = self.watts,
+            .alerts = self.alerts,
+            .offline = self.offline,
+        };
+        errdefer sw.deinit();
+
+        sw.id = try dupeOwned(alloc, self.id);
+        sw.name = try dupeOwned(alloc, self.name);
+        sw.driver = try dupeOwned(alloc, self.driver);
+        sw.discriminator = try dupeOwned(alloc, self.discriminator);
+        sw.manufacturer = try dupeOwned(alloc, self.manufacturer);
+        sw.model_number = try dupeOwned(alloc, self.model_number);
+        sw.serial_number = try dupeOwned(alloc, self.serial_number);
+        sw.firmware_version = try dupeOwned(alloc, self.firmware_version);
+
+        return sw;
+    }
+
+    fn dupeOwned(alloc: std.mem.Allocator, s: []const u8) ![]const u8 {
+        return if (s.len > 0) try alloc.dupe(u8, s) else "";
+    }
+
+    pub fn revert(self: *Switch, source: *const Switch) void {
+        self.state = source.state;
+    }
+
+    pub fn merge(self: *Switch, old: *const Switch, new: *const Switch) void {
+        if (self.state == old.state) self.state = new.state;
+
+        self.watts = new.watts;
+        self.offline = new.offline;
+    }
+
+    pub fn diff(self: *const Switch, source: *const Switch, a: std.mem.Allocator, out: *std.json.ObjectMap) !bool {
+        if (self.state == source.state) return false;
+        try out.put(a, "state", .{ .string = @tagName(self.state) });
+        return true;
     }
 };

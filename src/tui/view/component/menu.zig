@@ -2,6 +2,7 @@ const std = @import("std");
 const Color = @import("../../color.zig");
 const utils = @import("../../utils.zig");
 const KeyResult = @import("../../input.zig").KeyResult;
+const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const Menu = struct {
@@ -77,5 +78,37 @@ pub const Menu = struct {
             'j' => return .focus_next,
             else => return .ignored,
         }
+    }
+
+    /// Maps a pointer position to an item index by walking the same layout
+    /// write() uses: each item is `displayWidth(item)` wide, separated by
+    /// " | " (3 cols). Returns null when the pointer is off any item.
+    fn itemAt(self: *const Menu, x: u16, y: u16) ?usize {
+        if (y != self.y) return null;
+        var col = self.x;
+        for (self.items, 0..) |item, idx| {
+            if (idx > 0) col += 3; // " | " separator
+            const w = utils.displayWidth(item);
+            if (x >= col and x < col + w) return idx;
+            col += w;
+        }
+        return null;
+    }
+
+    pub fn handleMouse(self: *Menu, m: Mouse, mq: *MessageQueue) KeyResult {
+        const hit = self.itemAt(m.x, m.y);
+
+        // Hover feedback: hand over an item, arrow anywhere else in the row.
+        mq.post(.{ .update_pointer = if (hit != null) utils.pointer_hand else utils.pointer_default });
+
+        const idx = hit orelse return .ignored;
+        if (m.press and !m.move) {
+            if (idx != self.selected) {
+                self.selected = idx;
+                mq.post(.{ .view_changed = idx });
+            }
+            return .consumed;
+        }
+        return .consumed;
     }
 };

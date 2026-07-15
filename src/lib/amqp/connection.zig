@@ -1,5 +1,5 @@
 const std = @import("std");
-const net = std.net;
+const net = std.Io.net;
 const mem = std.mem;
 const posix = std.posix;
 const builtin = std.builtin;
@@ -27,11 +27,12 @@ pub const Connection = struct {
         };
     }
 
-    pub fn connect(connection: *Connection, address: net.Address, credentials: []const u8) !void {
-        const file = try net.tcpConnectToAddress(address);
-        _ = try file.write("AMQP\x00\x00\x09\x01");
+    pub fn connect(connection: *Connection, io: std.Io, address: net.IpAddress, credentials: []const u8) !void {
+        const stream = try address.connect(io, .{ .mode = .stream });
+        try Connector.sendRaw(stream.socket.handle, "AMQP\x00\x00\x09\x01");
 
-        connection.connector.file = file;
+        connection.connector.stream = stream;
+        connection.connector.io = io;
         connection.connector.connection = connection;
 
         var start = try proto.Connection.awaitStart(&connection.connector);
@@ -85,7 +86,7 @@ pub const Connection = struct {
     }
 
     pub fn deinit(connection: *Connection) void {
-        connection.connector.file.close();
+        connection.connector.stream.close(connection.connector.io);
     }
 
     pub fn channel(connection: *Connection) !Channel {
@@ -138,18 +139,14 @@ test "read / write / shift volatility" {
     defer posix.close(f[1]);
 
     var server_connector = Connector{
-        .file = net.Stream{
-            .handle = f[0],
-        },
+        .stream = .{ .socket = .{ .handle = f[0], .address = undefined } },
         .rx_buffer = server_rx_buf,
         .tx_buffer = server_tx_buf,
         .channel = 0,
     };
 
     var client_connector = Connector{
-        .file = net.Stream{
-            .handle = f[1],
-        },
+        .stream = .{ .socket = .{ .handle = f[1], .address = undefined } },
         .rx_buffer = server_rx_buf,
         .tx_buffer = server_tx_buf,
         .channel = 0,

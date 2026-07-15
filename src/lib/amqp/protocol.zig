@@ -80,7 +80,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeLongString(locales);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Start ->", .{connector.channel});
         return awaitStartOk(connector);
@@ -133,7 +133,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeShortString(locale);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Start_ok ->", .{connector.channel});
     }
@@ -170,7 +170,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeLongString(challenge);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Secure ->", .{connector.channel});
         return awaitSecureOk(connector);
@@ -208,7 +208,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeLongString(response);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Secure_ok ->", .{connector.channel});
     }
@@ -255,7 +255,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeU16(heartbeat);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Tune ->", .{connector.channel});
         return awaitTuneOk(connector);
@@ -303,7 +303,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeU16(heartbeat);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Tune_ok ->", .{connector.channel});
     }
@@ -354,7 +354,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Open ->", .{connector.channel});
         return awaitOpenOk(connector);
@@ -392,7 +392,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeShortString(reserved_1);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Open_ok ->", .{connector.channel});
     }
@@ -444,7 +444,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeU16(method_id);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Close ->", .{connector.channel});
         return awaitCloseOk(connector);
@@ -475,7 +475,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeMethodHeader(CONNECTION_CLASS, Connection.CLOSE_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Close_ok ->", .{connector.channel});
     }
@@ -512,7 +512,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeShortString(reason);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Blocked ->", .{connector.channel});
     }
@@ -542,7 +542,7 @@ pub const Connection = struct {
         connector.tx_buffer.writeMethodHeader(CONNECTION_CLASS, Connection.UNBLOCKED_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Connection@{any}.Unblocked ->", .{connector.channel});
     }
@@ -584,7 +584,7 @@ pub const Channel = struct {
         connector.tx_buffer.writeShortString(reserved_1);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Channel@{any}.Open ->", .{connector.channel});
         return awaitOpenOk(connector);
@@ -622,7 +622,7 @@ pub const Channel = struct {
         connector.tx_buffer.writeLongString(reserved_1);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Channel@{any}.Open_ok ->", .{connector.channel});
     }
@@ -663,7 +663,7 @@ pub const Channel = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Channel@{any}.Flow ->", .{connector.channel});
         return awaitFlowOk(connector);
@@ -705,7 +705,7 @@ pub const Channel = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Channel@{any}.Flow_ok ->", .{connector.channel});
     }
@@ -757,7 +757,7 @@ pub const Channel = struct {
         connector.tx_buffer.writeU16(method_id);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Channel@{any}.Close ->", .{connector.channel});
         return awaitCloseOk(connector);
@@ -788,7 +788,7 @@ pub const Channel = struct {
         connector.tx_buffer.writeMethodHeader(CHANNEL_CLASS, Channel.CLOSE_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Channel@{any}.Close_ok ->", .{connector.channel});
     }
@@ -874,7 +874,7 @@ pub const Exchange = struct {
         connector.tx_buffer.writeTable(arguments);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Exchange@{any}.Declare ->", .{connector.channel});
         return awaitDeclareOk(connector);
@@ -905,7 +905,7 @@ pub const Exchange = struct {
         connector.tx_buffer.writeMethodHeader(EXCHANGE_CLASS, Exchange.DECLARE_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Exchange@{any}.Declare_ok ->", .{connector.channel});
     }
@@ -961,7 +961,7 @@ pub const Exchange = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Exchange@{any}.Delete ->", .{connector.channel});
         return awaitDeleteOk(connector);
@@ -992,7 +992,7 @@ pub const Exchange = struct {
         connector.tx_buffer.writeMethodHeader(EXCHANGE_CLASS, Exchange.DELETE_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Exchange@{any}.Delete_ok ->", .{connector.channel});
     }
@@ -1073,7 +1073,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeTable(arguments);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Declare ->", .{connector.channel});
         return awaitDeclareOk(connector);
@@ -1121,7 +1121,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeU32(consumer_count);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Declare_ok ->", .{connector.channel});
     }
@@ -1187,7 +1187,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeTable(arguments);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Bind ->", .{connector.channel});
         return awaitBindOk(connector);
@@ -1218,7 +1218,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeMethodHeader(QUEUE_CLASS, Queue.BIND_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Bind_ok ->", .{connector.channel});
     }
@@ -1275,7 +1275,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeTable(arguments);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Unbind ->", .{connector.channel});
         return awaitUnbindOk(connector);
@@ -1306,7 +1306,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeMethodHeader(QUEUE_CLASS, Queue.UNBIND_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Unbind_ok ->", .{connector.channel});
     }
@@ -1357,7 +1357,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Purge ->", .{connector.channel});
         return awaitPurgeOk(connector);
@@ -1395,7 +1395,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeU32(message_count);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Purge_ok ->", .{connector.channel});
     }
@@ -1456,7 +1456,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Delete ->", .{connector.channel});
         return awaitDeleteOk(connector);
@@ -1494,7 +1494,7 @@ pub const Queue = struct {
         connector.tx_buffer.writeU32(message_count);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Queue@{any}.Delete_ok ->", .{connector.channel});
     }
@@ -1550,7 +1550,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Qos ->", .{connector.channel});
         return awaitQosOk(connector);
@@ -1581,7 +1581,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeMethodHeader(BASIC_CLASS, Basic.QOS_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Qos_ok ->", .{connector.channel});
     }
@@ -1657,7 +1657,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeTable(arguments);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Consume ->", .{connector.channel});
         return awaitConsumeOk(connector);
@@ -1695,7 +1695,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeShortString(consumer_tag);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Consume_ok ->", .{connector.channel});
     }
@@ -1741,7 +1741,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Cancel ->", .{connector.channel});
         return awaitCancelOk(connector);
@@ -1779,7 +1779,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeShortString(consumer_tag);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Cancel_ok ->", .{connector.channel});
     }
@@ -1840,7 +1840,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Publish ->", .{connector.channel});
     }
@@ -1892,7 +1892,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeShortString(routing_key);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Return ->", .{connector.channel});
     }
@@ -1953,7 +1953,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeShortString(routing_key);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Deliver ->", .{connector.channel});
     }
@@ -2004,7 +2004,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Get ->", .{connector.channel});
         return awaitGetEmpty(connector);
@@ -2066,7 +2066,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU32(message_count);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Get_ok ->", .{connector.channel});
     }
@@ -2103,7 +2103,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeShortString(reserved_1);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Get_empty ->", .{connector.channel});
     }
@@ -2149,7 +2149,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Ack ->", .{connector.channel});
     }
@@ -2195,7 +2195,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Reject ->", .{connector.channel});
     }
@@ -2236,7 +2236,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Recover_async ->", .{connector.channel});
     }
@@ -2277,7 +2277,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeU8(bitset0);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Recover ->", .{connector.channel});
     }
@@ -2307,7 +2307,7 @@ pub const Basic = struct {
         connector.tx_buffer.writeMethodHeader(BASIC_CLASS, Basic.RECOVER_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Basic@{any}.Recover_ok ->", .{connector.channel});
     }
@@ -2342,7 +2342,7 @@ pub const Tx = struct {
         connector.tx_buffer.writeMethodHeader(TX_CLASS, SELECT_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Tx@{any}.Select ->", .{connector.channel});
         return awaitSelectOk(connector);
@@ -2373,7 +2373,7 @@ pub const Tx = struct {
         connector.tx_buffer.writeMethodHeader(TX_CLASS, Tx.SELECT_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Tx@{any}.Select_ok ->", .{connector.channel});
     }
@@ -2403,7 +2403,7 @@ pub const Tx = struct {
         connector.tx_buffer.writeMethodHeader(TX_CLASS, COMMIT_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Tx@{any}.Commit ->", .{connector.channel});
         return awaitCommitOk(connector);
@@ -2434,7 +2434,7 @@ pub const Tx = struct {
         connector.tx_buffer.writeMethodHeader(TX_CLASS, Tx.COMMIT_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Tx@{any}.Commit_ok ->", .{connector.channel});
     }
@@ -2464,7 +2464,7 @@ pub const Tx = struct {
         connector.tx_buffer.writeMethodHeader(TX_CLASS, ROLLBACK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Tx@{any}.Rollback ->", .{connector.channel});
         return awaitRollbackOk(connector);
@@ -2495,7 +2495,7 @@ pub const Tx = struct {
         connector.tx_buffer.writeMethodHeader(TX_CLASS, Tx.ROLLBACK_OK_METHOD);
         connector.tx_buffer.updateFrameLength();
         // TODO: do we need to retry write (if n isn't as high as we expect)?
-        _ = try std.posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Tx@{any}.Rollback_ok ->", .{connector.channel});
     }

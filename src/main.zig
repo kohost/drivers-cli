@@ -12,7 +12,7 @@ pub const std_options = std.Options{
 
 pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const cfg = parseArgs(args);
+    const cfg = parseArgs(args, init.environ_map);
 
     if (cfg.tui) {
         try tui.run(cfg, init.gpa, init.io);
@@ -22,7 +22,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 /// Parses command-line args into a Config.
-fn parseArgs(args: []const [:0]const u8) Config {
+fn parseArgs(args: []const [:0]const u8, env: *std.process.Environ.Map) Config {
     var use_tui = false;
     var host: []const u8 = "127.0.0.1";
     var port: u16 = 16483;
@@ -47,6 +47,12 @@ fn parseArgs(args: []const [:0]const u8) Config {
         .host = host,
         .port = port,
         .tui = use_tui,
+
+        .amqp_host = env.get("AMQP_HOST") orelse "127.0.0.1",
+        .amqp_port = if (env.get("AMQP_PORT")) |s| std.fmt.parseInt(u16, s, 10) catch 5672 else 5672,
+        .amqp_user = env.get("AMQP_USER") orelse "user",
+        .amqp_pw = env.get("AMQP_PW") orelse "password",
+        .amqp_exchange = env.get("AMQP_EXCHANGE") orelse "kohost.events.drivers",
     };
 }
 

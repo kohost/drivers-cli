@@ -9,7 +9,8 @@ const log = std.log.scoped(.amqp);
 
 // TODO: think up a better name for this
 pub const Connector = struct {
-    file: std.net.Stream = undefined,
+    stream: std.Io.net.Stream = undefined,
+    io: std.Io = undefined,
     // TODO: we're going to run into trouble real fast if we reallocate the buffers
     //       and we have a bunch of copies of Connector everywhere. I think we just
     //       need to store a pointer to the Connection
@@ -18,21 +19,32 @@ pub const Connector = struct {
     connection: *Connection = undefined,
     channel: u16,
 
+    /// std.posix lost `write` in the std.Io migration, and the lib still does
+    /// blocking reads straight on the fd, so keep writes in the same style.
+    pub fn sendRaw(fd: posix.fd_t, bytes: []const u8) !void {
+        var i: usize = 0;
+        while (i < bytes.len) {
+            const n = std.c.write(fd, bytes.ptr + i, bytes.len - i);
+            if (n <= 0) return error.WriteFailed;
+            i += @intCast(n);
+        }
+    }
+
     pub fn sendHeader(connector: *Connector, size: u64, class: u16) !void {
         connector.tx_buffer.writeHeader(connector.channel, size, class);
-        _ = try posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
     }
 
     pub fn sendBody(connector: *Connector, body: []const u8) !void {
         connector.tx_buffer.writeBody(connector.channel, body);
-        _ = try posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
     }
 
     pub fn sendHeartbeat(connector: *Connector) !void {
         connector.tx_buffer.writeHeartbeat();
-        _ = try posix.write(connector.file.handle, connector.tx_buffer.extent());
+        try Connector.sendRaw(connector.stream.socket.handle, connector.tx_buffer.extent());
         connector.tx_buffer.reset();
         log.debug("Heartbeat ->", .{});
     }
@@ -41,7 +53,7 @@ pub const Connector = struct {
         while (true) {
             if (!connector.rx_buffer.frameReady()) {
                 // TODO: do we need to retry read (if n isn't as high as we expect)?
-                const n = try posix.read(connector.file.handle, connector.rx_buffer.remaining());
+                const n = try posix.read(connector.stream.socket.handle, connector.rx_buffer.remaining());
                 connector.rx_buffer.incrementEnd(n);
                 if (connector.rx_buffer.isFull()) connector.rx_buffer.shift();
                 continue;
@@ -83,7 +95,7 @@ pub const Connector = struct {
         while (true) {
             if (!connector.rx_buffer.frameReady()) {
                 // TODO: do we need to retry read (if n isn't as high as we expect)?
-                const n = try posix.read(connector.file.handle, connector.rx_buffer.remaining());
+                const n = try posix.read(connector.stream.socket.handle, connector.rx_buffer.remaining());
                 connector.rx_buffer.incrementEnd(n);
                 if (connector.rx_buffer.isFull()) connector.rx_buffer.shift();
                 continue;
@@ -125,7 +137,7 @@ pub const Connector = struct {
         while (true) {
             if (!connector.rx_buffer.frameReady()) {
                 // TODO: do we need to retry read (if n isn't as high as we expect)?
-                const n = try posix.read(connector.file.handle, connector.rx_buffer.remaining());
+                const n = try posix.read(connector.stream.socket.handle, connector.rx_buffer.remaining());
                 connector.rx_buffer.incrementEnd(n);
                 if (connector.rx_buffer.isFull()) connector.rx_buffer.shift();
                 continue;

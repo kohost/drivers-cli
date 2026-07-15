@@ -70,12 +70,12 @@ pub fn TextDisplay(comptime T: type) type {
         }
 
         /// Render a value of any T to text, resolved at compile time.
-        /// Optionals print their child or "-" when null.
+        /// Optionals print their child or "-" when null; empty strings print "-".
         fn format(comptime U: type, v: U, w: *Writer) anyerror!void {
             switch (@typeInfo(U)) {
                 .optional => |o| if (v) |inner| try format(o.child, inner, w) else try w.writeAll("-"),
                 .pointer => |p| if (p.child == u8)
-                    try w.writeAll(v)
+                    try w.writeAll(if (v.len == 0) "-" else v)
                 else switch (@typeInfo(p.child)) {
                     .@"enum" => for (v, 0..) |e, i| {
                         if (i > 0) try w.writeAll(", ");

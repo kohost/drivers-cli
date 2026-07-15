@@ -1,5 +1,6 @@
 const std = @import("std");
 const Config = @import("../config.zig").Config;
+const Device = @import("./state/models/device.zig").Device;
 const State = @import("state.zig").State;
 const Layout = @import("view/layout.zig").Layout;
 const View = @import("view.zig").View;
@@ -162,12 +163,19 @@ pub const App = struct {
 
         // Outer focus: a click picks which top-level region owns the keyboard.
         // The driver sets its own inner focus during dispatch below.
+        const region = self.regionAt(m);
         if (m.press and !m.move) {
-            self.focused = self.regionAt(m);
-            self.layout.menu.focused = (self.focused == 0);
-            if (self.focused != 1) self.view.blur();
+            self.focused = region;
+            self.layout.menu.focused = (region == 0);
+            if (region != 1) self.view.blur();
         }
-        _ = self.view.handleMouse(m, &self.mq);
+        // Route by the region under the cursor so hover feedback (pointer shape)
+        // reaches the menu even when the keyboard focus is elsewhere.
+        if (region == 0) {
+            _ = self.layout.menu.handleMouse(m, &self.mq);
+        } else {
+            _ = self.view.handleMouse(m, &self.mq);
+        }
         return self.drain();
     }
 
@@ -319,6 +327,32 @@ pub const App = struct {
     pub fn sync(self: *App) !void {
         self.vstate.deinit();
         self.vstate.* = try self.state.clone(self.alloc);
+    }
+
+    /// A broker event. 'state' is canonical and always takes the new values.
+    /// 'vstate' keeps any field the user has edited and adopts the rest, so a
+    /// live update can't overwrite an edit in progress.
+    pub fn applyEvent(self: *App, json: std.json.Value) !bool {
+        var arena = std.heap.ArenaAllocator.init(self.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        // Canonical values as they stand before the event. Shallow copies:
+        // strings alias into state, buth this is read-only and dies with the
+        // arena.
+        var before: std.ArrayList(Device) = .empty;
+        for (self.state.devices.items) |*sd| try before.append(a, sd.*);
+
+        if (!self.state.update(json)) return false;
+
+        for (self.vstate.devices.items) |*vd| {
+            const sd = self.state.getDevice(vd.id()) orelse continue;
+            const old = for (before.items) |*b| {
+                if (std.mem.eql(u8, b.id(), vd.id())) break b;
+            } else continue;
+            vd.merge(old, sd);
+        }
+        return true;
     }
 };
 
