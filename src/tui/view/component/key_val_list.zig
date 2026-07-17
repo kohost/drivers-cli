@@ -12,6 +12,7 @@ const Select = @import("./select.zig").Select;
 const TextDisplay = @import("text_display.zig").TextDisplay;
 const TextInput = @import("text_input.zig").TextInput;
 const Toggle = @import("./toggle.zig").Toggle;
+const ToggleDisplay = @import("./toggle.zig").Display;
 
 pub const KeyVal = struct { label: []const u8, value: Component };
 
@@ -206,7 +207,6 @@ pub const KeyValList = struct {
         try self.addRow(lbl, input.component());
     }
 
-    const toggleOpts = struct { active: []const u8 = "✔", inactive: []const u8 = "✗" };
     pub fn addToggle(
         self: *KeyValList,
         lbl: []const u8,
@@ -214,7 +214,7 @@ pub const KeyValList = struct {
         vsrc: anytype,
         on: std.meta.Child(@TypeOf(vsrc)),
         off: std.meta.Child(@TypeOf(vsrc)),
-        opts: toggleOpts,
+        display: ToggleDisplay,
     ) !void {
         const T = std.meta.Child(@TypeOf(vsrc));
         const toggle = try self.alloc.create(Toggle(T));
@@ -223,8 +223,7 @@ pub const KeyValList = struct {
             .vsource = vsrc,
             .on = on,
             .off = off,
-            .active = opts.active,
-            .inactive = opts.inactive,
+            .display = display,
         });
         try self.addRow(lbl, toggle.component());
     }

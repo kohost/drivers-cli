@@ -10,7 +10,11 @@ const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Switch = @import("../../state/models/switch.zig").Switch;
 const KeyValList = @import("../component/key_val_list.zig").KeyValList;
+const ToggleDisplay = @import("../component/toggle.zig").Display;
+const Color = @import("../../color.zig");
+const icons = @import("../../view/icons.zig");
 
+pub const Discriminator = enum { fan, irrigation, light };
 pub const SwitchView = struct {
     const Self = @This();
 
@@ -33,7 +37,30 @@ pub const SwitchView = struct {
         try self.list.addDisplay("serial", &vsrc.serial_number, .{});
         try self.list.addDisplay("firmware", &vsrc.firmware_version, .{});
         try self.list.addDisplay("watts", &vsrc.watts, .{});
-        try self.list.addToggle("state", &src.state, &vsrc.state, .on, .off, .{});
+
+        // Choose toggle display characteristics
+        const discriminator = std.meta.stringToEnum(Discriminator, src.discriminator) orelse .light;
+        const stateDisplay: ToggleDisplay = switch (discriminator) {
+            .fan => .{
+                .active = icons.light_on,
+                .inactive = icons.light_off,
+            },
+            .irrigation => .{
+                .style = .{
+                    .color = Color.blue,
+                    .secondary_color = Color.red,
+                    .tertiary_color = Color.yellow,
+                },
+                .active = icons.water_on,
+                .inactive = icons.water_off,
+            },
+            .light => .{
+                .active = icons.light_on,
+                .inactive = icons.light_off,
+            },
+        };
+
+        try self.list.addToggle("state", &src.state, &vsrc.state, .on, .off, stateDisplay);
         try self.list.addDisplay("online", &vsrc.offline, .{ .invert = true });
 
         self.list.cursor = 0;

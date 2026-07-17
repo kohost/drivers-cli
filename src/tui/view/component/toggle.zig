@@ -10,6 +10,16 @@ const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Style = @import("../_component.zig").Style;
 const utils = @import("../../utils.zig");
 
+pub const Display = struct {
+    style: Style = .{
+        .color = Color.green,
+        .secondary_color = Color.red,
+        .tertiary_color = Color.yellow,
+    },
+    active: []const u8 = "✔",
+    inactive: []const u8 = "✗",
+};
+
 pub fn Toggle(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -26,13 +36,7 @@ pub fn Toggle(comptime T: type) type {
             source: *const T,
             on: T,
             off: T,
-            style: Style = .{
-                .color = Color.green,
-                .secondary_color = Color.red,
-                .tertiary_color = Color.yellow,
-            },
-            active: []const u8 = "✔",
-            inactive: []const u8 = "✗",
+            display: Display = .{},
         };
 
         pub fn init(opts: Options) Self {
@@ -41,9 +45,9 @@ pub fn Toggle(comptime T: type) type {
                 .source = opts.source,
                 .on = opts.on,
                 .off = opts.off,
-                .style = opts.style,
-                .active = opts.active,
-                .inactive = opts.inactive,
+                .style = opts.display.style,
+                .active = opts.display.active,
+                .inactive = opts.display.inactive,
             };
         }
 
