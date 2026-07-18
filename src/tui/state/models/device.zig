@@ -1,12 +1,18 @@
 const std = @import("std");
 const Alarm = @import("alarm.zig").Alarm;
+const Dimmer = @import("dimmer.zig").Dimmer;
 const Lock = @import("lock.zig").Lock;
+const MediaSource = @import("mediaSource.zig").MediaSource;
+const MotionSensor = @import("motionSensor.zig").MotionSensor;
 const Switch = @import("switch.zig").Switch;
 const Thermostat = @import("thermostat.zig").Thermostat;
 
 pub const Device = union(enum) {
     // alarm: Alarm,
+    dimmer: Dimmer,
     lock: Lock,
+    mediaSource: MediaSource,
+    motionSensor: MotionSensor,
     @"switch": Switch,
     thermostat: Thermostat,
 

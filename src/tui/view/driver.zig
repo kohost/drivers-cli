@@ -12,6 +12,9 @@ const Frame = Component.Frame;
 const KeyResult = @import("../input.zig").KeyResult;
 const Mouse = @import("../input.zig").Mouse;
 const MessageQueue = @import("../message_queue.zig").MessageQueue;
+const DimmerView = @import("devices/dimmer.zig").DimmerView;
+const MediaSourceView = @import("devices/mediaSource.zig").MediaSourceView;
+const MotionSensorView = @import("devices/motionSensor.zig").MotionSensorView;
 const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
 const LockView = @import("devices/lock.zig").LockView;
 const SwitchView = @import("devices/switch.zig").SwitchView;
@@ -24,7 +27,6 @@ const Style = @import("_component.zig").Style;
 const icons = @import("icons.zig");
 const commands = @import("../../commands.zig");
 const Writer = std.Io.Writer;
-
 
 const Focus = enum { main, commands, request, response, command_select, send_button };
 
@@ -528,6 +530,12 @@ pub const DriverView = struct {
             const sdevice = &self.state.devices.items[i];
             const vdevice = &self.vstate.devices.items[i];
             switch (vdevice.*) {
+                .dimmer => |*vd| switch (sdevice.*) {
+                    .dimmer => |*sd| {
+                        self.detail = .{ .dimmer = DimmerView.init(self.alloc, vd, sd) catch return .consumed };
+                    },
+                    else => return .consumed,
+                },
                 .thermostat => |*vd| switch (sdevice.*) {
                     .thermostat => |*sd| {
                         self.detail = .{ .thermostat = ThermostatView.init(self.alloc, vd, sd) catch return .consumed };
@@ -537,6 +545,18 @@ pub const DriverView = struct {
                 .lock => |*vd| switch (sdevice.*) {
                     .lock => |*sd| {
                         self.detail = .{ .lock = LockView.init(self.alloc, vd, sd) catch return .consumed };
+                    },
+                    else => return .consumed,
+                },
+                .mediaSource => |*vd| switch (sdevice.*) {
+                    .mediaSource => |*sd| {
+                        self.detail = .{ .mediaSource = MediaSourceView.init(self.alloc, vd, sd) catch return .consumed };
+                    },
+                    else => return .consumed,
+                },
+                .motionSensor => |*vd| switch (sdevice.*) {
+                    .motionSensor => |*sd| {
+                        self.detail = .{ .motionSensor = MotionSensorView.init(self.alloc, vd, sd) catch return .consumed };
                     },
                     else => return .consumed,
                 },
