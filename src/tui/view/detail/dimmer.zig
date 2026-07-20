@@ -35,7 +35,7 @@ pub const DimmerView = struct {
         try self.list.addDisplay("serial", &vsrc.serial_number, .{});
         try self.list.addDisplay("firmware", &vsrc.firmware_version, .{});
         try self.list.addDisplay("watts", &vsrc.watts, .{});
-        // try self.list.addToggle("state", &src.state, &vsrc.state, .on, .off, );
+        try self.list.addSlider("level", &src.level, &vsrc.level, .{ .min = 0, .max = 100 });
         try self.list.addDisplay("online", &vsrc.offline, .{ .invert = true });
 
         self.list.cursor = 0;

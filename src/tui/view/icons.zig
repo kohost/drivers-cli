@@ -16,7 +16,6 @@ pub const angle_right = "\u{f105}";
 pub const caret_down = "\u{f0d7}";
 pub const caret_up = "\u{f0d8}";
 pub const toggle = "\u{f205}";
-pub const tv = "\u{f26c}";
 pub const thermometer = "\u{f2c9}";
 pub const send = "\u{f1d9}";
 pub const sprinkler = "\u{f058c}";
@@ -24,6 +23,9 @@ pub const motionSensor = "\u{f0d91}";
 pub const water_on = "\u{f1504}";
 pub const water_off = "\u{f150c}";
 pub const window = "\u{f2d2}";
+
+// Wide glyphs that need a trailing space to align correctly
+pub const tv = "\u{f26c} ";
 
 pub const device_icon = std.StaticStringMap([]const u8).initComptime(.{
     .{ "alarm", bell },

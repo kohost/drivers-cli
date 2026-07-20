@@ -8,7 +8,7 @@ const Frame = Component.Frame;
 const KeyResult = @import("../../input.zig").KeyResult;
 const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
-const Style = @import("../_component.zig").Style;
+const Style = @import("../component.zig").Style;
 
 pub fn TextInput(comptime T: type) type {
     return struct {

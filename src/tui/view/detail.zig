@@ -1,20 +1,19 @@
 const Component = @import("Component.zig");
 const KeyValList = @import("component/key_val_list.zig").KeyValList;
-const DimmerView = @import("devices/dimmer.zig").DimmerView;
-const MediaSourceView = @import("devices/mediaSource.zig").MediaSourceView;
-const MotionSensorView = @import("devices/motionSensor.zig").MotionSensorView;
-const ThermostatView = @import("devices/thermostat.zig").ThermostatView;
-const LockView = @import("devices/lock.zig").LockView;
-const SwitchView = @import("devices/switch.zig").SwitchView;
+const Dimmer = @import("detail/dimmer.zig").DimmerView;
+const MediaSource = @import("detail/media_source.zig").MediaSourceView;
+const MotionSensor = @import("detail/motion_sensor.zig").MotionSensorView;
+const Thermostat = @import("detail/thermostat.zig").ThermostatView;
+const Lock = @import("detail/lock.zig").LockView;
+const Switch = @import("detail/switch.zig").SwitchView;
 
-// Depth-1 detail view; one variant per drillable device type.
 pub const DetailView = union(enum) {
-    dimmer: DimmerView,
-    thermostat: ThermostatView,
-    lock: LockView,
-    mediaSource: MediaSourceView,
-    motionSensor: MotionSensorView,
-    @"switch": SwitchView,
+    dimmer: Dimmer,
+    thermostat: Thermostat,
+    lock: Lock,
+    mediaSource: MediaSource,
+    motionSensor: MotionSensor,
+    @"switch": Switch,
     none,
 
     pub fn deinit(self: *DetailView) void {

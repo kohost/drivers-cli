@@ -7,7 +7,7 @@ const Frame = Component.Frame;
 const Cursor = @import("../../canvas.zig").Cursor;
 const KeyResult = @import("../../input.zig").KeyResult;
 const Mouse = @import("../../input.zig").Mouse;
-const Style = @import("../_component.zig").Style;
+const Style = @import("../component.zig").Style;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 
 pub const Button = struct {

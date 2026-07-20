@@ -17,6 +17,19 @@ pub const Frame = struct {
     }
 };
 
+pub const Style = struct {
+    color: []const u8 = "",
+    secondary_color: []const u8 = "",
+    tertiary_color: []const u8 = "",
+    bg_color: []const u8 = "",
+    secondary_bg_color: []const u8 = "",
+    padding_left: u8 = 0,
+    padding_right: u8 = 0,
+    prefix: []const u8 = "",
+    suffix: []const u8 = "",
+    focus_marker: bool = true,
+};
+
 ptr: *anyopaque,
 vtable: *const VTable,
 

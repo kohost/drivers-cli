@@ -110,12 +110,10 @@ pub const MediaSource = struct {
         a: std.mem.Allocator,
         out: *std.json.ObjectMap,
     ) !bool {
-        // if (self.level == src.level) return false;
         _ = self;
         _ = src;
         _ = a;
         _ = out;
-        // try out.put(a, "level", .{ .integer = self.level });
-        return true;
+        return false;
     }
 };

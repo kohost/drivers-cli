@@ -9,6 +9,7 @@ const KeyResult = @import("../../input.zig").KeyResult;
 const Mouse = @import("../../input.zig").Mouse;
 const MessageQueue = @import("../../message_queue.zig").MessageQueue;
 const Select = @import("./select.zig").Select;
+const Slider = @import("./slider.zig").Slider;
 const TextDisplay = @import("text_display.zig").TextDisplay;
 const TextInput = @import("text_input.zig").TextInput;
 const Toggle = @import("./toggle.zig").Toggle;
@@ -226,6 +227,19 @@ pub const KeyValList = struct {
             .display = display,
         });
         try self.addRow(lbl, toggle.component());
+    }
+
+    pub fn addSlider(
+        self: *KeyValList,
+        lbl: []const u8,
+        src: anytype,
+        vsrc: anytype,
+        opts: Slider(std.meta.Child(@TypeOf(vsrc))).Options,
+    ) !void {
+        const T = std.meta.Child(@TypeOf(vsrc));
+        const slider = try self.alloc.create(Slider(T));
+        slider.* = .init(src, vsrc, opts);
+        try self.addRow(lbl, slider.component());
     }
 
     pub fn addSelect(
