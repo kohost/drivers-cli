@@ -204,6 +204,9 @@ pub const App = struct {
         return 0;
     }
 
+    /// Returns all queued messages and empties the queue in one shot.
+    /// The slice aliases the internal buffer, so it's only valid until the
+    /// next post(), consume it prior to posting anything new.
     fn drain(self: *App) bool {
         for (self.mq.drain()) |msg| {
             switch (msg) {
