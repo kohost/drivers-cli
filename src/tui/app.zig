@@ -134,7 +134,6 @@ pub const App = struct {
             else => KeyResult.ignored,
         };
 
-        std.debug.print("app:handleKey:result: {any}\n", .{result});
         switch (result) {
             .focus_next => {
                 if (self.focused == 0) {
