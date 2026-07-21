@@ -18,8 +18,8 @@ pub const Panel = struct {
     top_right: []const u8,
     bottom_left: []const u8,
     bottom_right: []const u8,
-    children: [4]Component,
-    child_count: u8,
+    children: [4]Component = undefined,
+    child_count: u8 = 0,
     frame: Frame = .{},
 
     pub fn init(opts: struct {
@@ -33,8 +33,6 @@ pub const Panel = struct {
             .top_right = opts.top_right,
             .bottom_left = opts.bottom_left,
             .bottom_right = opts.bottom_right,
-            .children = undefined,
-            .child_count = 0,
         };
     }
 

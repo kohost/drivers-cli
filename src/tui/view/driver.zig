@@ -77,7 +77,10 @@ pub const DriverView = struct {
             .top_right = host_label,
         });
         panels[1] = Panel.init(.{ .top_right = "Commands" });
-        panels[2] = Panel.init(.{ .top_left = "Request" });
+        panels[2] = Panel.init(.{
+            .top_left = "Request",
+            .bottom_right = icons.checkbox_unchecked ++ " Autosend",
+        });
         panels[3] = Panel.init(.{ .top_left = "Response" });
         return .{
             .alloc = cfg.alloc,

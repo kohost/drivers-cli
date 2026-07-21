@@ -23,37 +23,31 @@ pub fn main(init: std.process.Init) !void {
 
 /// Parses command-line args into a Config.
 fn parseArgs(args: []const [:0]const u8, env: *std.process.Environ.Map) Config {
-    var use_tui = false;
-    var host: []const u8 = "127.0.0.1";
-    var port: u16 = 16483;
+    var config: Config = .{};
 
     for (args[1..]) |arg| {
         if (std.mem.eql(u8, arg, "--tui")) {
-            use_tui = true;
+            config.tui = true;
             continue;
         }
 
         if (std.fmt.parseInt(u16, arg, 10)) |p| {
-            port = p;
+            config.port = p;
             continue;
         } else |_| {}
 
         if (isValidIp(arg)) {
-            host = arg;
+            config.host = arg;
         }
     }
 
-    return .{
-        .host = host,
-        .port = port,
-        .tui = use_tui,
+    if (env.get("AMQP_HOST")) |v| config.amqp_host = v;
+    if (env.get("AMQP_PORT")) |v| config.amqp_port = std.fmt.parseInt(u16, v, 10) catch config.amqp_port;
+    if (env.get("AMQP_USER")) |v| config.amqp_user = v;
+    if (env.get("AMQP_PW")) |v| config.amqp_pw = v;
+    if (env.get("AMQP_EXCHANGE")) |v| config.amqp_exchange = v;
 
-        .amqp_host = env.get("AMQP_HOST") orelse "127.0.0.1",
-        .amqp_port = if (env.get("AMQP_PORT")) |s| std.fmt.parseInt(u16, s, 10) catch 5672 else 5672,
-        .amqp_user = env.get("AMQP_USER") orelse "user",
-        .amqp_pw = env.get("AMQP_PW") orelse "password",
-        .amqp_exchange = env.get("AMQP_EXCHANGE") orelse "kohost.events.drivers",
-    };
+    return config;
 }
 
 /// Validates an IPv4 address string.

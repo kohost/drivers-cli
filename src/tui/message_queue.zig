@@ -10,6 +10,7 @@ pub const Capture = struct {
 pub const Message = union(enum) {
     quit,
     open_input: u8,
+    open_palette,
     submit_input,
     cancel_input,
     view_changed: usize,

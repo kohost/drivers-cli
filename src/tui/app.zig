@@ -15,16 +15,30 @@ const commands = @import("../commands.zig");
 
 const view_top: u16 = 5; // first row of the view region (below header/menu)
 
+const Settings = struct {
+    auto_send: bool = false,
+};
+
+// Command palette direct commands so user can type :p autosend_on instead of
+// having to open the command palette, finding autosend, etc.
+const PaletteCommand = enum {
+    autosend_on,
+    autosend_off,
+};
+
 pub const App = struct {
+    cfg: *const Config,
     alloc: Allocator,
     cols: u16,
     rows: u16,
-    cfg: *const Config,
 
     // Canonical data vs virtual data. We keep both so we can diff between them
     // to build our data for updateDevices command.
     state: *State,
     vstate: *State,
+
+    // Application settings
+    settings: Settings = .{},
 
     layout: Layout,
     view: View,
@@ -34,6 +48,7 @@ pub const App = struct {
     mq: MessageQueue,
     transport: Transport,
     command: *commands.Command,
+
     // An open dropdown owns the mouse until an event lands outside it.
     capture: ?Capture = null,
 
@@ -119,6 +134,7 @@ pub const App = struct {
             else => KeyResult.ignored,
         };
 
+        std.debug.print("app:handleKey:result: {any}\n", .{result});
         switch (result) {
             .focus_next => {
                 if (self.focused == 0) {
@@ -143,6 +159,7 @@ pub const App = struct {
                 self.layout.footer.open('/', self.view.getFilter());
                 self.mq.post(.render);
             },
+            .changed => if (self.settings.auto_send) self.mq.post(.send_command),
             else => {},
         }
 
@@ -154,7 +171,8 @@ pub const App = struct {
         // The first event outside dismisses it, then dispatch continues as normal.
         if (self.capture) |c| {
             if (c.frame.contains(m.x, m.y)) {
-                _ = c.component.handleMouse(m, &self.mq);
+                const result = c.component.handleMouse(m, &self.mq);
+                if (result == .changed and self.settings.auto_send) self.mq.post(.send_command);
                 return self.drain();
             }
             _ = c.component.handleKey(0x1b, &self.mq);
@@ -174,7 +192,8 @@ pub const App = struct {
         if (region == 0) {
             _ = self.layout.menu.handleMouse(m, &self.mq);
         } else {
-            _ = self.view.handleMouse(m, &self.mq);
+            const result = self.view.handleMouse(m, &self.mq);
+            if (result == .changed and self.settings.auto_send) self.mq.post(.send_command);
         }
         return self.drain();
     }
@@ -190,6 +209,7 @@ pub const App = struct {
         for (self.mq.drain()) |msg| {
             switch (msg) {
                 .quit => return false,
+                .open_palette => {},
                 .open_input => |prefix| {
                     self.prev_focus = self.focused;
                     self.focused = 2;
@@ -226,11 +246,29 @@ pub const App = struct {
         return true;
     }
 
-    fn handleInput(_: *App, prefix: u8, input: []const u8) bool {
+    fn handleInput(self: *App, prefix: u8, input: []const u8) bool {
         switch (prefix) {
             ':' => {
-                if (std.mem.eql(u8, input, "q") or std.mem.eql(u8, input, "quit")) {
+                const trimmed = std.mem.trim(u8, input, " ");
+                const sp = std.mem.indexOfScalar(u8, trimmed, ' ');
+                const cmd = if (sp) |i| trimmed[0..i] else trimmed;
+                const arg: ?[]const u8 = if (sp) |i| trimmed[i + 1 ..] else null;
+
+                if (std.mem.eql(u8, cmd, "q") or std.mem.eql(u8, cmd, "quit")) {
                     return false;
+                }
+                if (std.mem.eql(u8, cmd, "p") or std.mem.eql(u8, cmd, "palette")) {
+                    if (arg) |name| {
+                        const command = std.meta.stringToEnum(PaletteCommand, name) orelse return true; // unknown -> bail
+                        switch (command) {
+                            .autosend_on => {
+                                self.settings.auto_send = true;
+                            },
+                            .autosend_off => {
+                                self.settings.auto_send = false;
+                            },
+                        }
+                    } else self.mq.post(.open_palette);
                 }
             },
             else => {},

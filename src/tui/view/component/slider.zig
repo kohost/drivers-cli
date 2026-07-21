@@ -67,7 +67,6 @@ pub fn Slider(comptime T: type) type {
 
         /// Pins newly proposed UI value into valid range prior to storing.
         fn setClamped(self: *Self, value: f32) void {
-            std.debug.print("setClamped value: {d}\n", .{value});
             const clamped_value = clamp(value, toFloat(self.min), toFloat(self.max));
 
             self.vsource.* = fromFloat(clamped_value);

@@ -1,6 +1,8 @@
 const std = @import("std");
 
 // Nerd Font
+pub const checkbox_checked = "\u{f4a7}";
+pub const checkbox_unchecked = "\u{f0131}";
 pub const search = "\u{f002}";
 pub const lock = "\u{f033e}";
 pub const unlock = "\u{f033f}";
